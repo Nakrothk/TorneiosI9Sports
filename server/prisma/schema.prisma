@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Team {
+  id                String            @id @default(cuid())
+  player1           String
+  player2           String
+  category          String            @default("")
+  matchesA          Match[]           @relation("TeamA")
+  matchesB          Match[]           @relation("TeamB")
+  wonMatches        Match[]           @relation("Winner")
+  tournamentEntries TournamentEntry[]
+}
+
+model Court {
+  id      String  @id @default(cuid())
+  name    String
+  matches Match[]
+}
+
+model Tournament {
+  id        String            @id @default(cuid())
+  name      String
+  category  String            @default("")
+  group     String            @default("")
+  createdAt DateTime          @default(now())
+  entries   TournamentEntry[]
+  matches   Match[]
+}
+
+model TournamentEntry {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  teamId       String
+  team         Team       @relation(fields: [teamId], references: [id])
+  seed         Int        @default(0)
+}
+
+model Match {
+  id           String      @id @default(cuid())
+  teamAId      String?
+  teamBId      String?
+  teamA        Team?       @relation("TeamA", fields: [teamAId], references: [id])
+  teamB        Team?       @relation("TeamB", fields: [teamBId], references: [id])
+  courtId      String?
+  court        Court?      @relation(fields: [courtId], references: [id])
+  category     String      @default("")
+  round        String      @default("")
+  position     Int         @default(0)
+  nextMatchId  String?
+  nextMatch    Match?      @relation("BracketNext", fields: [nextMatchId], references: [id])
+  prevMatches  Match[]     @relation("BracketNext")
+  winnerTeamId String?
+  winnerTeam   Team?       @relation("Winner", fields: [winnerTeamId], references: [id])
+  tournamentId String?
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id])
+  scoreA       Int         @default(0)
+  scoreB       Int         @default(0)
+  prevScoreA   Int         @default(0)
+  prevScoreB   Int         @default(0)
+  status       String      @default("waiting")
+  isNext       Boolean     @default(false)
+  calledAt     DateTime?
+  createdAt    DateTime    @default(now())
+}
