@@ -1,0 +1,14 @@
+{
+  "name": "beach-tennis-tournament",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "cd client && npm install && npm run build",
+    "start": "node server/src/index.js",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev"
+  }
+}

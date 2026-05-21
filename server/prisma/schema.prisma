@@ -12,6 +12,7 @@ model Team {
   player1           String
   player2           String
   category          String            @default("")
+  colorTeam         String            @default("")
   matchesA          Match[]           @relation("TeamA")
   matchesB          Match[]           @relation("TeamB")
   wonMatches        Match[]           @relation("Winner")
@@ -29,6 +30,7 @@ model Tournament {
   name      String
   category  String            @default("")
   group     String            @default("")
+  type      String            @default("bracket")
   createdAt DateTime          @default(now())
   entries   TournamentEntry[]
   matches   Match[]
@@ -41,6 +43,7 @@ model TournamentEntry {
   teamId       String
   team         Team       @relation(fields: [teamId], references: [id])
   seed         Int        @default(0)
+  colorTeam    String     @default("")
 }
 
 model Match {

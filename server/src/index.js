@@ -1,6 +1,8 @@
 require('dotenv').config()
 const express = require('express')
 const cors    = require('cors')
+const path    = require('path')
+const fs      = require('fs')
 
 const authMiddleware    = require('./middleware/auth')
 const authRouter        = require('./routes/auth')
@@ -27,6 +29,13 @@ app.use('/import',      importRouter)
 app.use('/tournaments', tournamentsRouter)
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
+
+// Serve client build em produção (quando client/dist existe)
+const CLIENT_DIST = path.join(__dirname, '..', '..', 'client', 'dist')
+if (fs.existsSync(CLIENT_DIST)) {
+  app.use(express.static(CLIENT_DIST))
+  app.get('*', (_req, res) => res.sendFile(path.join(CLIENT_DIST, 'index.html')))
+}
 
 app.use((err, _req, res, _next) => {
   console.error(err)

@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 
+const COLOR_TEXT = {
+  Verde:   'text-green-400',
+  Amarelo: 'text-yellow-300',
+  Azul:    'text-blue-400',
+  Branco:  'text-white',
+}
+
 const ROUND_LABELS = {
   oitavas:          'Oitavas de Final',
   quartas:          'Quartas de Final',
@@ -17,7 +24,7 @@ function getAudioCtx() {
   return _audioCtx
 }
 
-function playCallSound() {
+function playSound(notes) {
   try {
     const ctx = getAudioCtx()
     const resume = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve()
@@ -41,25 +48,41 @@ function playCallSound() {
       }
 
       const t = ctx.currentTime
-      // Arpejo suave: Dó – Mi – Sol – Dó (oitava acima)
-      chime(523.25, t + 0.00, 0.6)   // C5
-      chime(659.25, t + 0.18, 0.6)   // E5
-      chime(784.00, t + 0.36, 0.6)   // G5
-      chime(1046.5, t + 0.54, 1.0)   // C6 — nota final mais longa
+      notes.forEach(([freq, offset, dur]) => chime(freq, t + offset, dur))
     })
   } catch {}
+}
+
+function playCallSound() {
+  // Arpejo ascendente: Dó – Mi – Sol – Dó (oitava acima)
+  playSound([
+    [523.25, 0.00, 0.6],
+    [659.25, 0.18, 0.6],
+    [784.00, 0.36, 0.6],
+    [1046.5, 0.54, 1.0],
+  ])
+}
+
+function playNextSound() {
+  // Dois tons suaves descendentes — diferente da chamada
+  playSound([
+    [622.25, 0.00, 0.5],
+    [466.16, 0.22, 0.8],
+  ])
 }
 
 export default function TV() {
   // state: undefined=loading, null=idle, { called, next }=data
   const [data, setData]        = useState(undefined)
   const prevCalledAtRef        = useRef(null)
+  const prevNextIdRef          = useRef(null)
   const reminderRef            = useRef(null)
   const [flash, setFlash]      = useState(false)
 
   const refresh = async () => {
     try {
       const d = await api.get('/matches/tv')
+
       const calledAt = d.called?.calledAt ?? null
       if (calledAt && calledAt !== prevCalledAtRef.current) {
         prevCalledAtRef.current = calledAt
@@ -72,6 +95,14 @@ export default function TV() {
           reminderRef.current = null
         }, 15000)
       }
+
+      const nextId = d.next?.id ?? null
+      if (nextId && nextId !== prevNextIdRef.current) {
+        prevNextIdRef.current = nextId
+        playNextSound()
+      }
+      if (!nextId) prevNextIdRef.current = null
+
       setData(d)
     } catch {
       // mantém o último estado visível em caso de erro de rede
@@ -102,15 +133,15 @@ export default function TV() {
 
   return (
     <div
-      className={`h-screen flex flex-col overflow-hidden transition-colors duration-300 ${
+      className={`h-full flex flex-col overflow-hidden transition-colors duration-300 ${
         flash ? 'bg-yellow-300' : 'bg-slate-950'
       }`}
     >
       <div className="flex-1 flex flex-col min-h-0">
         {data === undefined && <Standby label="Carregando..." />}
-        {data !== undefined && !called && !next   && <Standby label="Aguardando chamada" />}
-        {data !== undefined && calledIsWaiting     && <CallCard match={called} showCourt />}
-        {data !== undefined && showNext            && <CallCard match={next}   showCourt={false} />}
+        {data !== undefined && !calledIsWaiting && !showNext && <Standby label="Aguardando chamada" />}
+        {data !== undefined && calledIsWaiting                && <CallCard match={called} showCourt />}
+        {data !== undefined && showNext                       && <CallCard match={next}   showCourt={false} />}
       </div>
     </div>
   )
@@ -150,21 +181,21 @@ function CallCard({ match, showCourt }) {
 
       {/* Quadra (chamada) ou faixa PRÓXIMO */}
       {showCourt && courtName ? (
-        <div className="bg-yellow-400 text-slate-900 text-center py-4 px-6 shrink-0 flex items-center justify-center gap-4">
-          <p className="text-xl font-black uppercase tracking-[0.3em]">{courtLabel}</p>
-          <p className="text-5xl font-black leading-none">{courtNumber ?? courtName}</p>
+        <div className="bg-yellow-400 text-slate-900 text-center py-6 px-6 shrink-0 flex items-center justify-center gap-6">
+          <p className="font-black uppercase tracking-[0.3em]" style={{ fontSize: 'clamp(2rem, 5vw, 6rem)' }}>{courtLabel}</p>
+          <p className="font-black leading-none" style={{ fontSize: 'clamp(2rem, 5vw, 6rem)' }}>{courtNumber ?? courtName}</p>
         </div>
       ) : !showCourt ? (
-        <div className="bg-emerald-600 text-white text-center py-4 px-6 shrink-0">
-          <p className="text-2xl font-black tracking-[0.3em] uppercase">Próxima Partida</p>
+        <div className="bg-emerald-600 text-white text-center py-6 px-6 shrink-0">
+          <p className="font-black tracking-[0.3em] uppercase" style={{ fontSize: 'clamp(2rem, 5vw, 6rem)' }}>Próxima Partida</p>
         </div>
       ) : null}
 
       {/* Duplas */}
-      <div className="bg-slate-900 text-white text-center flex flex-col items-center justify-center flex-1 min-h-0 px-10 gap-2 overflow-hidden">
-        <p className="font-black text-sky-300 leading-snug w-full" style={{ fontSize: 'clamp(1.8rem, 4vw, 5rem)' }}>{nameA}</p>
-        <p className="font-black text-slate-500 tracking-widest shrink-0" style={{ fontSize: 'clamp(1.5rem, 3vw, 3.5rem)' }}>×</p>
-        <p className="font-black text-rose-300 leading-snug w-full" style={{ fontSize: 'clamp(1.8rem, 4vw, 5rem)' }}>{nameB}</p>
+      <div className="bg-slate-900 text-white text-center flex flex-col items-center justify-center flex-1 min-h-0 px-10 gap-3 overflow-hidden">
+        <p className={`font-black leading-snug w-full ${COLOR_TEXT[match.teamA?.colorTeam] ?? 'text-sky-300'}`} style={{ fontSize: 'clamp(2.5rem, 6vw, 7rem)' }}>{nameA}</p>
+        <p className="font-black text-slate-500 tracking-widest shrink-0" style={{ fontSize: 'clamp(2rem, 4.5vw, 5rem)' }}>×</p>
+        <p className={`font-black leading-snug w-full ${COLOR_TEXT[match.teamB?.colorTeam] ?? 'text-rose-300'}`} style={{ fontSize: 'clamp(2.5rem, 6vw, 7rem)' }}>{nameB}</p>
       </div>
 
       {/* Categoria */}

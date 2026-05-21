@@ -1,4 +1,6 @@
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+// Em dev: VITE_API_URL=http://localhost:3001 (via client/.env, não commitado)
+// Em produção: VITE_API_URL não definida → BASE='' → chamadas relativas (mesma origem)
+const BASE = import.meta.env.VITE_API_URL ?? ''
 
 function getToken() {
   return localStorage.getItem('auth_token')

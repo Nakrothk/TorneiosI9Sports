@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import Admin from './pages/Admin'
-import TV    from './pages/TV'
-import Login from './pages/Login'
+import Admin  from './pages/Admin'
+import TV     from './pages/TV'
+import Login  from './pages/Login'
+import Placar from './pages/Placar'
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem('auth_token')
@@ -14,8 +15,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/tv"    element={<TV />} />
-        <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+        <Route path="/tv"     element={<TV />} />
+        <Route path="/placar" element={<Placar />} />
+        <Route path="/admin"  element={<ProtectedRoute><Admin /></ProtectedRoute>} />
         <Route path="/"      element={<Navigate to="/admin" replace />} />
       </Routes>
     </BrowserRouter>

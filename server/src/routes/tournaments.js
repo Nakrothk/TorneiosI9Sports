@@ -25,10 +25,15 @@ router.get('/', async (_req, res, next) => {
 // ── POST /tournaments ───────────────────────────────────────────
 router.post('/', async (req, res, next) => {
   try {
-    const { name, category, group } = req.body
+    const { name, category, group, type } = req.body
     if (!name?.trim()) return res.status(400).json({ error: 'name é obrigatório' })
     const t = await prisma.tournament.create({
-      data: { name: name.trim(), category: category?.trim() || '', group: group?.trim() || '' },
+      data: {
+        name:     name.trim(),
+        category: category?.trim() || '',
+        group:    group?.trim()    || '',
+        type:     (type === 'ffa') ? 'ffa' : 'bracket',
+      },
       include: tInclude,
     })
     res.status(201).json(t)
@@ -188,7 +193,7 @@ router.post('/generate-bracket', async (req, res, next) => {
 // ── POST /tournaments/:id/teams ─────────────────────────────────
 router.post('/:id/teams', async (req, res, next) => {
   try {
-    const { teamId } = req.body
+    const { teamId, colorTeam } = req.body
     if (!teamId) return res.status(400).json({ error: 'teamId é obrigatório' })
 
     const exists = await prisma.tournamentEntry.findFirst({
@@ -198,7 +203,7 @@ router.post('/:id/teams', async (req, res, next) => {
 
     const count = await prisma.tournamentEntry.count({ where: { tournamentId: req.params.id } })
     await prisma.tournamentEntry.create({
-      data: { tournamentId: req.params.id, teamId, seed: count + 1 },
+      data: { tournamentId: req.params.id, teamId, seed: count + 1, colorTeam: colorTeam || '' },
     })
 
     res.json(await getTournament(req.params.id))
@@ -279,6 +284,338 @@ router.delete('/:id', async (req, res, next) => {
     await prisma.tournamentEntry.deleteMany({ where: { tournamentId: req.params.id } })
     await prisma.tournament.delete({ where: { id: req.params.id } })
     res.json({ ok: true })
+  } catch (err) { next(err) }
+})
+
+// ── DELETE /tournaments/:id/ffa-teams/:teamId ───────────────────
+router.delete('/:id/ffa-teams/:teamId', async (req, res, next) => {
+  try {
+    await prisma.tournamentEntry.deleteMany({
+      where: { tournamentId: req.params.id, teamId: req.params.teamId },
+    })
+    res.json(await getTournament(req.params.id))
+  } catch (err) { next(err) }
+})
+
+// ── PUT /tournaments/:id/teams/:teamId/color ────────────────────
+router.put('/:id/teams/:teamId/color', async (req, res, next) => {
+  try {
+    const { colorTeam } = req.body
+    await prisma.tournamentEntry.updateMany({
+      where: { tournamentId: req.params.id, teamId: req.params.teamId },
+      data:  { colorTeam: colorTeam || '' },
+    })
+    res.json(await getTournament(req.params.id))
+  } catch (err) { next(err) }
+})
+
+// ── POST /tournaments/:id/ffa-batch-teams ───────────────────────
+// Add multiple teams to a color team at once
+router.post('/:id/ffa-batch-teams', async (req, res, next) => {
+  try {
+    const { colorTeam, teamIds } = req.body
+    if (!colorTeam) return res.status(400).json({ error: 'colorTeam é obrigatório' })
+    if (!Array.isArray(teamIds) || teamIds.length === 0) {
+      return res.status(400).json({ error: 'teamIds deve ser um array não-vazio' })
+    }
+
+    let added = 0
+    for (const teamId of teamIds) {
+      const existing = await prisma.tournamentEntry.findFirst({
+        where: { tournamentId: req.params.id, teamId },
+      })
+      if (existing) {
+        await prisma.tournamentEntry.update({
+          where: { id: existing.id },
+          data:  { colorTeam },
+        })
+      } else {
+        const count = await prisma.tournamentEntry.count({ where: { tournamentId: req.params.id } })
+        await prisma.tournamentEntry.create({
+          data: { tournamentId: req.params.id, teamId, seed: count + 1, colorTeam },
+        })
+      }
+      added++
+    }
+
+    res.json({ added, tournament: await getTournament(req.params.id) })
+  } catch (err) { next(err) }
+})
+
+// ── POST /tournaments/:id/ffa-auto-generate ──────────────────────
+// Auto-generate all group matches from existing entries
+// Groups entries by (team.category, colorTeam), then pairs Verde[i]×Amarelo[i]×Azul[i]×Branco[i]
+router.post('/:id/ffa-auto-generate', async (req, res, next) => {
+  try {
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: req.params.id },
+      include: {
+        entries: { include: { team: true }, orderBy: { seed: 'asc' } },
+      },
+    })
+    if (!tournament) return res.status(404).json({ error: 'Torneio não encontrado' })
+
+    const COLORS = ['Verde', 'Amarelo', 'Azul', 'Branco']
+
+    // Group entries by (category, colorTeam) so same-category teams only face each other
+    const catColorMap = {} // { [category]: { [color]: teamId[] } }
+    for (const entry of tournament.entries) {
+      const cat = entry.team?.category || ''
+      if (!catColorMap[cat]) catColorMap[cat] = {}
+      if (!catColorMap[cat][entry.colorTeam]) catColorMap[cat][entry.colorTeam] = []
+      catColorMap[cat][entry.colorTeam].push(entry.teamId)
+    }
+
+    if (Object.keys(catColorMap).length === 0) {
+      return res.status(400).json({ error: 'Nenhuma dupla cadastrada no torneio.' })
+    }
+
+    // Delete existing group matches (keep finals)
+    await prisma.match.deleteMany({
+      where: {
+        tournamentId: req.params.id,
+        round:        { notIn: ['semi', 'final', 'terceiro lugar'] },
+      },
+    })
+
+    let pos = 1
+    let matchesCreated = 0
+
+    // For each category, pair teams of the same category across colors
+    for (const [cat, colorMap] of Object.entries(catColorMap)) {
+      const activeColors = COLORS.filter(c => colorMap[c]?.length > 0)
+      if (activeColors.length < 2) continue
+
+      const rounds = Math.min(...activeColors.map(c => colorMap[c].length))
+      for (let i = 0; i < rounds; i++) {
+        const ids = activeColors.map(c => colorMap[c][i])
+        for (let a = 0; a < ids.length; a++) {
+          for (let b = a + 1; b < ids.length; b++) {
+            await prisma.match.create({
+              data: {
+                teamAId:      ids[a],
+                teamBId:      ids[b],
+                tournamentId: req.params.id,
+                category:     cat,
+                round:        '',
+                position:     pos++,
+                status:       'waiting',
+              },
+            })
+            matchesCreated++
+          }
+        }
+      }
+    }
+
+    if (matchesCreated === 0) {
+      return res.status(400).json({
+        error: 'Nenhuma partida gerada. Verifique se há duplas da mesma categoria em times diferentes.',
+      })
+    }
+
+    res.status(201).json({ matchesCreated, tournament: await getTournament(req.params.id) })
+  } catch (err) { next(err) }
+})
+
+// ── POST /tournaments/:id/ffa-groups ────────────────────────────
+// Create a FFA group: 4 entries (one per color) + 6 round-robin matches
+router.post('/:id/ffa-groups', async (req, res, next) => {
+  try {
+    const { category, entries } = req.body
+    // entries: [{ teamId, colorTeam }] — exactly 4 with distinct colors
+    if (!category?.trim()) return res.status(400).json({ error: 'category é obrigatória' })
+    if (!Array.isArray(entries) || entries.length !== 4) {
+      return res.status(400).json({ error: 'Necessário exatamente 4 duplas (uma por time)' })
+    }
+    const COLORS = ['Verde', 'Amarelo', 'Azul', 'Branco']
+    const colors = entries.map(e => e.colorTeam)
+    if (!COLORS.every(c => colors.includes(c))) {
+      return res.status(400).json({ error: 'É necessário uma dupla de cada time (Verde, Amarelo, Azul, Branco)' })
+    }
+
+    // Determine group number for this category
+    const existingGroups = await prisma.match.findMany({
+      where: { tournamentId: req.params.id, category: category.trim() },
+      select: { round: true },
+      distinct: ['round'],
+    })
+    const groupNums = existingGroups
+      .map(m => parseInt(m.round?.replace('G', '') || '0'))
+      .filter(n => !isNaN(n))
+    const nextGroup = groupNums.length > 0 ? Math.max(...groupNums) + 1 : 1
+    const groupName = `G${nextGroup}`
+
+    // Ensure each dupla has a TournamentEntry with colorTeam
+    for (const entry of entries) {
+      const existing = await prisma.tournamentEntry.findFirst({
+        where: { tournamentId: req.params.id, teamId: entry.teamId },
+      })
+      if (existing) {
+        if (existing.colorTeam !== entry.colorTeam) {
+          await prisma.tournamentEntry.update({
+            where: { id: existing.id },
+            data:  { colorTeam: entry.colorTeam },
+          })
+        }
+      } else {
+        const count = await prisma.tournamentEntry.count({ where: { tournamentId: req.params.id } })
+        await prisma.tournamentEntry.create({
+          data: { tournamentId: req.params.id, teamId: entry.teamId, seed: count + 1, colorTeam: entry.colorTeam },
+        })
+      }
+    }
+
+    // Generate 6 round-robin matches (C(4,2) = 6)
+    const ids = entries.map(e => e.teamId)
+    const pairs = []
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        pairs.push({ teamAId: ids[i], teamBId: ids[j] })
+      }
+    }
+
+    const existing = await prisma.match.count({ where: { tournamentId: req.params.id } })
+    let pos = existing + 1
+    for (const pair of pairs) {
+      await prisma.match.create({
+        data: {
+          teamAId:      pair.teamAId,
+          teamBId:      pair.teamBId,
+          tournamentId: req.params.id,
+          category:     category.trim(),
+          round:        groupName,
+          position:     pos++,
+          status:       'waiting',
+        },
+      })
+    }
+
+    res.status(201).json(await getTournament(req.params.id))
+  } catch (err) { next(err) }
+})
+
+// ── GET /tournaments/:id/ffa-standings ──────────────────────────
+router.get('/:id/ffa-standings', async (req, res, next) => {
+  try {
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: req.params.id },
+      include: {
+        entries: { include: { team: true } },
+        matches: { include: { teamA: true, teamB: true } },
+      },
+    })
+    if (!tournament) return res.status(404).json({ error: 'Torneio não encontrado' })
+
+    const COLORS = ['Verde', 'Amarelo', 'Azul', 'Branco']
+    const teamColor = new Map(tournament.entries.map(e => [e.teamId, e.colorTeam]))
+
+    const standings = {}
+    for (const c of COLORS) standings[c] = { colorTeam: c, wins: 0, losses: 0, draws: 0, played: 0 }
+
+    for (const m of tournament.matches) {
+      if (m.status !== 'finished') continue
+      const colorA = teamColor.get(m.teamAId) || null
+      const colorB = teamColor.get(m.teamBId) || null
+      if (!colorA || !colorB) continue
+
+      if (standings[colorA]) standings[colorA].played++
+      if (standings[colorB]) standings[colorB].played++
+
+      if (m.scoreA > m.scoreB) {
+        if (standings[colorA]) standings[colorA].wins++
+        if (standings[colorB]) standings[colorB].losses++
+      } else if (m.scoreB > m.scoreA) {
+        if (standings[colorB]) standings[colorB].wins++
+        if (standings[colorA]) standings[colorA].losses++
+      } else {
+        if (standings[colorA]) standings[colorA].draws++
+        if (standings[colorB]) standings[colorB].draws++
+      }
+    }
+
+    const result = Object.values(standings)
+      .sort((a, b) => b.wins - a.wins || b.played - a.played)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+// ── POST /tournaments/:id/ffa-finals ────────────────────────────
+// Generate final bracket for FFA: uses teamIds from top-ranked color teams
+router.post('/:id/ffa-finals', async (req, res, next) => {
+  try {
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: req.params.id },
+      include: {
+        entries: { include: { team: true } },
+        matches: { include: { teamA: true, teamB: true } },
+      },
+    })
+    if (!tournament) return res.status(404).json({ error: 'Torneio não encontrado' })
+
+    // Get standings
+    const COLORS = ['Verde', 'Amarelo', 'Azul', 'Branco']
+    const teamColor = new Map(tournament.entries.map(e => [e.teamId, e.colorTeam]))
+    const standings = {}
+    for (const c of COLORS) standings[c] = { colorTeam: c, wins: 0, teamIds: [] }
+    for (const e of tournament.entries) {
+      if (standings[e.colorTeam]) standings[e.colorTeam].teamIds.push(e.teamId)
+    }
+    for (const m of tournament.matches) {
+      if (m.status !== 'finished' || !m.winnerTeamId) continue
+      const color = teamColor.get(m.winnerTeamId)
+      if (color && standings[color]) standings[color].wins++
+    }
+
+    const ranked = Object.values(standings).sort((a, b) => b.wins - a.wins)
+
+    // Delete existing finals matches for this tournament
+    await prisma.match.deleteMany({
+      where: { tournamentId: req.params.id, round: { in: ['semi', 'final', 'terceiro lugar'] } },
+    })
+
+    // Representatives: for each color team, pick the entry with highest wins
+    // (if no specific dupla is given, pick first one)
+    const { category } = req.body // optional: finals category
+    const cat = category?.trim() || tournament.category || ''
+
+    const rep = (colorStandings) => {
+      // Pick from teamIds of this colorTeam
+      return colorStandings.teamIds[0] || null
+    }
+
+    const [first, second, third, fourth] = ranked
+
+    if (!first?.teamIds[0] || !second?.teamIds[0]) {
+      return res.status(400).json({ error: 'Não há duplas suficientes para gerar a final' })
+    }
+
+    // Semi 1: 1st vs 4th (or final directly if only 2 teams with players)
+    // Final: winners of semis
+    const finalM = await prisma.match.create({
+      data: { tournamentId: req.params.id, category: cat, round: 'final', position: 100, status: 'waiting' },
+    })
+    const thirdM = await prisma.match.create({
+      data: { tournamentId: req.params.id, category: cat, round: 'terceiro lugar', position: 101, status: 'waiting' },
+    })
+
+    if (third?.teamIds[0] && fourth?.teamIds[0]) {
+      // 4-team bracket: two semis
+      const semi1 = await prisma.match.create({
+        data: { teamAId: rep(first), teamBId: rep(fourth), tournamentId: req.params.id, category: cat, round: 'semi', position: 97, status: 'waiting', nextMatchId: finalM.id },
+      })
+      const semi2 = await prisma.match.create({
+        data: { teamAId: rep(second), teamBId: rep(third), tournamentId: req.params.id, category: cat, round: 'semi', position: 98, status: 'waiting', nextMatchId: finalM.id },
+      })
+    } else {
+      // 2-team final only
+      await prisma.match.update({
+        where: { id: finalM.id },
+        data:  { teamAId: rep(first), teamBId: rep(second) },
+      })
+    }
+
+    res.status(201).json(await getTournament(req.params.id))
   } catch (err) { next(err) }
 })
 

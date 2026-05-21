@@ -10,6 +10,7 @@ const TEAM_CATEGORIES = [
   'Masculina A', 'Masculina B', 'Masculina C', 'Masculina D', 'Masculina E',
   'Feminina A',  'Feminina B',  'Feminina C',  'Feminina D',  'Feminina E',
   'Mista A',     'Mista B',     'Mista C',     'Mista D',     'Mista E',
+  'MÃE + MÃE', 'MÃES + FILHOS(AS)', 'MÃE E FILHOS', 'MÃES + FILHAS',
 ]
 
 function normalizeCategory(raw) {
@@ -47,13 +48,28 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
-    const { player1, player2, category } = req.body
+    const { player1, player2, category, colorTeam } = req.body
     const data = {}
-    if (player1?.trim()) data.player1 = player1.trim()
-    if (player2?.trim()) data.player2 = player2.trim()
+    if (player1?.trim())  data.player1  = player1.trim()
+    if (player2?.trim())  data.player2  = player2.trim()
     if (category?.trim()) data.category = category.trim()
+    if (colorTeam !== undefined) data.colorTeam = colorTeam || ''
     const team = await prisma.team.update({ where: { id: req.params.id }, data })
     res.json(team)
+  } catch (err) { next(err) }
+})
+
+router.delete('/', async (_req, res, next) => {
+  try {
+    await prisma.$transaction([
+      // Remove entradas de torneios que referenciam duplas
+      prisma.tournamentEntry.deleteMany({}),
+      // Desvincula duplas das partidas
+      prisma.match.updateMany({ data: { teamAId: null, teamBId: null, winnerTeamId: null } }),
+      // Agora pode apagar todas as duplas
+      prisma.team.deleteMany({}),
+    ])
+    res.json({ ok: true })
   } catch (err) { next(err) }
 })
 
@@ -68,12 +84,12 @@ router.delete('/:id', async (req, res, next) => {
 router.get('/export', async (_req, res, next) => {
   try {
     const teams = await prisma.team.findMany({ orderBy: [{ category: 'asc' }, { player1: 'asc' }] })
-    const rows = [['Jogador 1', 'Jogador 2', 'Categoria']]
-    for (const t of teams) rows.push([t.player1, t.player2, t.category || ''])
+    const rows = [['Jogador 1', 'Jogador 2', 'Categoria', 'Time']]
+    for (const t of teams) rows.push([t.player1, t.player2, t.category || '', t.colorTeam || ''])
 
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.aoa_to_sheet(rows)
-    ws['!cols'] = [{ wch: 30 }, { wch: 30 }, { wch: 16 }]
+    ws['!cols'] = [{ wch: 30 }, { wch: 30 }, { wch: 16 }, { wch: 10 }]
     XLSX.utils.book_append_sheet(wb, ws, 'DUPLAS')
 
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
@@ -98,20 +114,23 @@ router.post('/import', upload.single('file'), async (req, res, next) => {
     let imported = 0, skipped = 0
     const errors = []
 
+    const VALID_COLORS = ['Verde', 'Amarelo', 'Azul', 'Branco']
+
     for (let i = start; i < rows.length; i++) {
-      const [p1raw, p2raw, catRaw] = rows[i]
-      const p1  = String(p1raw  ?? '').trim()
-      const p2  = String(p2raw  ?? '').trim()
-      const cat = normalizeCategory(catRaw)
+      const [p1raw, p2raw, catRaw, colorRaw] = rows[i]
+      const p1    = String(p1raw    ?? '').trim()
+      const p2    = String(p2raw    ?? '').trim()
+      const cat   = normalizeCategory(catRaw)
+      const color = VALID_COLORS.find(c => c.toLowerCase() === String(colorRaw ?? '').trim().toLowerCase()) ?? ''
 
       if (!p1 || !p2) { skipped++; continue }
       if (!cat)       { errors.push(`Linha ${i + 1}: categoria vazia`); continue }
 
       const existing = await prisma.team.findFirst({ where: { player1: p1, player2: p2 } })
       if (existing) {
-        await prisma.team.update({ where: { id: existing.id }, data: { category: cat } })
+        await prisma.team.update({ where: { id: existing.id }, data: { category: cat, colorTeam: color } })
       } else {
-        await prisma.team.create({ data: { player1: p1, player2: p2, category: cat } })
+        await prisma.team.create({ data: { player1: p1, player2: p2, category: cat, colorTeam: color } })
       }
       imported++
     }

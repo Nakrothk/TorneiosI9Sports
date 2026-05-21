@@ -50,7 +50,7 @@ router.get('/tv', async (_req, res, next) => {
         orderBy: { calledAt: 'desc' },
         include,
       }),
-      prisma.match.findFirst({ where: { isNext: true }, include }),
+      prisma.match.findFirst({ where: { isNext: true, calledAt: null }, include }),
     ])
     res.json({ called: called ?? null, next: next ?? null })
   } catch (err) { next(err) }
@@ -88,7 +88,7 @@ router.post('/:id/call', async (req, res, next) => {
     if (!match) return res.status(404).json({ error: 'Partida não encontrada' })
     const updated = await prisma.match.update({
       where: { id: req.params.id },
-      data:  { calledAt: new Date() },
+      data:  { calledAt: new Date(), isNext: false },
       include,
     })
     res.json(updated)
@@ -143,17 +143,6 @@ router.post('/:id/finish', async (req, res, next) => {
         if      (!next.teamAId) await prisma.match.update({ where: { id: next.id }, data: { teamAId: winnerTeamId } })
         else if (!next.teamBId) await prisma.match.update({ where: { id: next.id }, data: { teamBId: winnerTeamId } })
       }
-    }
-
-    // ── Auto-call next match ─────────────────────────────────────
-    const nextInQueue = await prisma.match.findFirst({
-      where: { isNext: true, status: 'waiting' },
-    })
-    if (nextInQueue) {
-      await prisma.match.update({
-        where: { id: nextInQueue.id },
-        data:  { calledAt: new Date(), isNext: false },
-      })
     }
 
     res.json(updated)
@@ -267,6 +256,20 @@ router.post('/:id/set-teams', async (req, res, next) => {
     if (teamAId !== undefined) data.teamAId = teamAId || null
     if (teamBId !== undefined) data.teamBId = teamBId || null
     const updated = await prisma.match.update({ where: { id: req.params.id }, data, include })
+    res.json(updated)
+  } catch (err) { next(err) }
+})
+
+// ── PUT /matches/:id/position ──────────────────────────────────
+router.put('/:id/position', async (req, res, next) => {
+  try {
+    const pos = parseInt(req.body.position)
+    if (isNaN(pos)) return res.status(400).json({ error: 'position deve ser um número' })
+    const updated = await prisma.match.update({
+      where: { id: req.params.id },
+      data:  { position: pos },
+      include,
+    })
     res.json(updated)
   } catch (err) { next(err) }
 })

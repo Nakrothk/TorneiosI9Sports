@@ -15,6 +15,7 @@ const TEAM_CATEGORIES = [
   'Masculina A', 'Masculina B', 'Masculina C', 'Masculina D', 'Masculina E',
   'Feminina A',  'Feminina B',  'Feminina C',  'Feminina D',  'Feminina E',
   'Mista A',     'Mista B',     'Mista C',     'Mista D',     'Mista E',
+  'MÃE + MÃE', 'MÃES + FILHOS(AS)', 'MÃE E FILHOS', 'MÃES + FILHAS',
 ]
 const CATEGORIES = TEAM_CATEGORIES
 
@@ -242,6 +243,7 @@ export default function Admin() {
   const TABS = [
     { id: 'chaves',   label: 'Chaves' },
     { id: 'torneios', label: 'Torneios' },
+    { id: 'copa',     label: 'Copa do Mundo' },
     { id: 'duplas',   label: 'Duplas' },
     { id: 'quadras',  label: 'Quadras' },
   ]
@@ -254,6 +256,10 @@ export default function Admin() {
           <a href="/tv" target="_blank" rel="noopener noreferrer"
             className="text-sm bg-yellow-400 text-gray-900 font-bold px-4 py-1.5 rounded-lg hover:bg-yellow-300 transition-colors">
             Tela TV →
+          </a>
+          <a href="/placar" target="_blank" rel="noopener noreferrer"
+            className="text-sm bg-emerald-400 text-gray-900 font-bold px-4 py-1.5 rounded-lg hover:bg-emerald-300 transition-colors">
+            Placar →
           </a>
           <button
             onClick={() => { localStorage.removeItem('auth_token'); window.location.replace('/login') }}
@@ -294,6 +300,17 @@ export default function Admin() {
           />
         )}
 
+        {/* ══ COPA DO MUNDO ════════════════════════════════════ */}
+        {tab === 'copa' && (
+          <CopaTab
+            tournaments={tournaments.filter(t => t.type === 'ffa')}
+            teams={teams}
+            courts={courts}
+            onReload={load}
+            notify={notify}
+          />
+        )}
+
         {/* ══ TORNEIOS ══════════════════════════════════════════ */}
         {tab === 'torneios' && (
           <TourneiosTab
@@ -329,7 +346,9 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
   const [editP1,      setEditP1]     = useState('')
   const [editP2,      setEditP2]     = useState('')
   const [editCat,     setEditCat]    = useState('')
+  const [editColor,   setEditColor]  = useState('')
   const [filterCat,   setFilterCat]  = useState('')
+  const [filterColor, setFilterColor] = useState('')
   const [importing,   setImporting]  = useState(false)
   const importRef = useRef(null)
   const { confirm, modal: confirmModal } = useConfirm()
@@ -363,13 +382,13 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
     finally { setImporting(false); if (importRef.current) importRef.current.value = '' }
   }
 
-  const startEdit = (t) => { setEditingId(t.id); setEditP1(t.player1); setEditP2(t.player2); setEditCat(t.category || '') }
+  const startEdit = (t) => { setEditingId(t.id); setEditP1(t.player1); setEditP2(t.player2); setEditCat(t.category || ''); setEditColor(t.colorTeam || '') }
   const cancelEdit = () => setEditingId(null)
 
   const saveEdit = async (id) => {
     if (!editP1.trim() || !editP2.trim() || !editCat) return notify('Preencha todos os campos', 'err')
     try {
-      await api.put(`/teams/${id}`, { player1: editP1, player2: editP2, category: editCat })
+      await api.put(`/teams/${id}`, { player1: editP1, player2: editP2, category: editCat, colorTeam: editColor })
       await onReload(); notify('Dupla atualizada!')
     } catch (err) { notify(err.message, 'err') }
     cancelEdit()
@@ -383,7 +402,10 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
     } catch (err) { notify(err.message, 'err') }
   }
 
-  const filtered = filterCat ? teams.filter(t => t.category === filterCat) : teams
+  const filtered = teams.filter(t =>
+    (!filterCat   || t.category  === filterCat) &&
+    (!filterColor || t.colorTeam === filterColor)
+  )
 
   // Group teams by category for display
   const grouped = TEAM_CATEGORIES
@@ -426,24 +448,58 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
               📤 Exportar
             </button>
           )}
-          <span className="text-xs text-gray-300 ml-1">Formato: Jogador 1 | Jogador 2 | Categoria</span>
+          {teams.length > 0 && (
+            <button onClick={async () => {
+              if (!await confirm(`Excluir todas as ${teams.length} duplas? Esta ação não pode ser desfeita.`)) return
+              try {
+                await api.delete('/teams')
+                await onReload(); notify('Todas as duplas foram excluídas.')
+              } catch (err) { notify(err.message, 'err') }
+            }}
+              className="px-3 py-1.5 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors ml-auto">
+              🗑 Excluir todas
+            </button>
+          )}
+          <span className="text-xs text-gray-300 ml-1">Formato: Jogador 1 | Jogador 2 | Categoria | Time (opcional)</span>
         </div>
       </Card>
 
-      {/* Filtro por categoria */}
+      {/* Filtros */}
       {teams.length > 0 && (
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Filtrar:</span>
-          <button onClick={() => setFilterCat('')}
-            className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
-              !filterCat ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'
-            }`}>Todas ({teams.length})</button>
-          {TEAM_CATEGORIES.filter(c => teams.some(t => t.category === c)).map(c => (
-            <button key={c} onClick={() => setFilterCat(filterCat === c ? '' : c)}
+        <div className="space-y-2">
+          {/* Filtro por time (cor) */}
+          {teams.some(t => t.colorTeam) && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Time:</span>
+              <button onClick={() => setFilterColor('')}
+                className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
+                  !filterColor ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                }`}>Todos</button>
+              {FFA_COLORS.filter(c => teams.some(t => t.colorTeam === c)).map(c => {
+                const s = COLOR_STYLE[c]
+                return (
+                  <button key={c} onClick={() => setFilterColor(filterColor === c ? '' : c)}
+                    className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
+                      filterColor === c ? `${s.bg} ${s.text} border-transparent` : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                    }`}>{c} ({teams.filter(t => t.colorTeam === c).length})</button>
+                )
+              })}
+            </div>
+          )}
+          {/* Filtro por categoria */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Categoria:</span>
+            <button onClick={() => setFilterCat('')}
               className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
-                filterCat === c ? `${teamCatStyle(c)} border-current` : 'border-gray-200 text-gray-500 hover:border-gray-400'
-              }`}>{c} ({teams.filter(t => t.category === c).length})</button>
-          ))}
+                !filterCat ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'
+              }`}>Todas ({teams.length})</button>
+            {TEAM_CATEGORIES.filter(c => teams.some(t => t.category === c)).map(c => (
+              <button key={c} onClick={() => setFilterCat(filterCat === c ? '' : c)}
+                className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
+                  filterCat === c ? `${teamCatStyle(c)} border-current` : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                }`}>{c} ({teams.filter(t => t.category === c).length})</button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -472,6 +528,23 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
                     </div>
                     <input value={editP1} onChange={e => setEditP1(e.target.value)} className="input w-full text-xs py-1" placeholder="Jogador 1" />
                     <input value={editP2} onChange={e => setEditP2(e.target.value)} className="input w-full text-xs py-1" placeholder="Jogador 2" />
+                    {/* Seletor de time (opcional) */}
+                    <div className="flex flex-wrap gap-1 items-center">
+                      <span className="text-xs text-gray-400">Time:</span>
+                      <button type="button" onClick={() => setEditColor('')}
+                        className={`px-2 py-0.5 text-xs font-bold rounded-full border transition-colors ${
+                          !editColor ? 'bg-gray-200 text-gray-600 border-gray-300' : 'border-gray-200 text-gray-300'
+                        }`}>—</button>
+                      {FFA_COLORS.map(c => {
+                        const s = COLOR_STYLE[c]
+                        return (
+                          <button key={c} type="button" onClick={() => setEditColor(c)}
+                            className={`px-2 py-0.5 text-xs font-bold rounded-full border transition-colors ${
+                              editColor === c ? `${s.bg} ${s.text} border-transparent` : 'border-gray-200 text-gray-300'
+                            }`}>{c}</button>
+                        )
+                      })}
+                    </div>
                     <div className="flex gap-1">
                       <button onClick={() => saveEdit(t.id)} className="flex-1 py-1 text-xs font-bold bg-green-600 text-white rounded-lg hover:bg-green-700">✓ Salvar</button>
                       <button onClick={cancelEdit} className="px-3 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">✕</button>
@@ -480,8 +553,14 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
                 ) : (
                   <>
                     <div className="flex items-start justify-between gap-1 mb-1.5">
-                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${teamCatStyle(t.category)}`}>{t.category || '—'}</span>
-                      <div className="flex gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${teamCatStyle(t.category)}`}>{t.category || '—'}</span>
+                        {t.colorTeam && (() => {
+                          const s = COLOR_STYLE[t.colorTeam]
+                          return <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${s.bg} ${s.text}`}>{t.colorTeam}</span>
+                        })()}
+                      </div>
+                      <div className="flex gap-1 shrink-0">
                         <button onClick={() => startEdit(t)} className="text-gray-300 hover:text-blue-500 text-xs px-1 transition-colors">✏</button>
                         <button onClick={() => deleteTeam(t.id, `${t.player1} / ${t.player2}`)} className="text-gray-300 hover:text-red-500 text-xs px-1 transition-colors">🗑</button>
                       </div>
@@ -1510,8 +1589,8 @@ function TournamentCard({ tournament, teams, courts, allTournaments = [], onRelo
   const doneMatches    = tournament.matches.filter(m => m.status === 'finished').length
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="bg-blue-900 text-white px-6 py-4 flex items-center justify-between gap-4">
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200">
+      <div className="bg-blue-900 text-white px-6 py-4 flex items-center justify-between gap-4 rounded-t-2xl">
         <div>
           <h2 className="text-xl font-black">{tournament.name}</h2>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -1950,6 +2029,671 @@ function useConfirm() {
     : null
 
   return { confirm, modal }
+}
+
+// ════════════════════════════════════════════════════════════════
+// COPA DO MUNDO TAB (FFA)
+// ════════════════════════════════════════════════════════════════
+const FFA_COLORS = ['Verde', 'Amarelo', 'Azul', 'Branco']
+
+const COLOR_STYLE = {
+  Verde:   { bg: 'bg-green-500',  text: 'text-white',    light: 'bg-green-50  text-green-800  border-green-200'  },
+  Amarelo: { bg: 'bg-yellow-400', text: 'text-gray-900', light: 'bg-yellow-50 text-yellow-800 border-yellow-200' },
+  Azul:    { bg: 'bg-blue-600',   text: 'text-white',    light: 'bg-blue-50   text-blue-800   border-blue-200'   },
+  Branco:  { bg: 'bg-gray-200',   text: 'text-gray-700', light: 'bg-gray-50   text-gray-700   border-gray-300'   },
+}
+
+function ffaStandings(tournament) {
+  const teamColor = new Map(tournament.entries.map(e => [e.teamId, e.colorTeam]))
+  const s = {}
+  for (const c of FFA_COLORS) s[c] = { colorTeam: c, wins: 0, losses: 0, draws: 0, played: 0 }
+  for (const m of tournament.matches) {
+    if (m.status !== 'finished') continue
+    const cA = teamColor.get(m.teamAId), cB = teamColor.get(m.teamBId)
+    if (!cA || !cB || !s[cA] || !s[cB]) continue
+    s[cA].played++; s[cB].played++
+    if (m.scoreA > m.scoreB)      { s[cA].wins++;  s[cB].losses++ }
+    else if (m.scoreB > m.scoreA) { s[cB].wins++;  s[cA].losses++ }
+    else                          { s[cA].draws++; s[cB].draws++  }
+  }
+  return Object.values(s).sort((a, b) => b.wins - a.wins)
+}
+
+function CopaTab({ tournaments, teams, courts, onReload, notify }) {
+  const [name, setName]     = useState('')
+  const [selected, setSelected] = useState(null)
+  const { confirm, modal: confirmModal } = useConfirm()
+
+  const createFfa = async (e) => {
+    e.preventDefault()
+    try {
+      await api.post('/tournaments', { name: name.trim(), type: 'ffa' })
+      setName(''); onReload(); notify('Copa do Mundo criada!')
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  const deleteFfa = async (t) => {
+    if (!await confirm(`Excluir "${t.name}" e todas as partidas?`)) return
+    try {
+      await authFetch(`${API_URL}/tournaments/${t.id}`, { method: 'DELETE' })
+      onReload(); notify('Excluído.')
+      if (selected?.id === t.id) setSelected(null)
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  const live = selected ? (tournaments.find(t => t.id === selected.id) || null) : null
+
+  return (
+    <>
+      <Card title="Nova Copa do Mundo (FFA)">
+        <p className="text-xs text-gray-400 mb-3">
+          Formato: 4 times (Verde, Amarelo, Azul, Branco) jogam em grupos por categoria.
+          O time com mais vitórias vence o torneio.
+        </p>
+        <form onSubmit={createFfa} className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nome do Evento</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              placeholder="Ex: Copa do Mundo BT 2026" required className="input w-full" />
+          </div>
+          <Btn type="submit" color="blue">Criar</Btn>
+        </form>
+      </Card>
+
+      {tournaments.length === 0 && <Empty msg="Nenhuma Copa do Mundo criada." />}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {tournaments.map(t => {
+          const ranked = ffaStandings(t)
+          const done = t.matches.filter(m => m.status === 'finished').length
+          return (
+            <div key={t.id} onClick={() => setSelected(t)}
+              className={`rounded-2xl border-2 overflow-hidden cursor-pointer hover:shadow-lg transition-all ${
+                live?.id === t.id ? 'border-blue-500' : 'border-gray-200'
+              }`}>
+              <div className="bg-gray-900 text-white px-5 py-4 flex items-center justify-between">
+                <div>
+                  <p className="font-black text-base">{t.name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {t.entries.length} duplas · {done}/{t.matches.length} partidas
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs bg-purple-600 text-white font-bold px-2 py-0.5 rounded-full">FFA</span>
+                  <button onClick={e => { e.stopPropagation(); deleteFfa(t) }}
+                    className="text-gray-400 hover:text-red-400 transition-colors text-lg px-1">🗑</button>
+                </div>
+              </div>
+              <div className="bg-white px-4 py-4">
+                <div className="flex gap-2">
+                  {ranked.map(({ colorTeam, wins, played }, i) => {
+                    const s = COLOR_STYLE[colorTeam]
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}°`
+                    return (
+                      <div key={colorTeam} className={`flex-1 rounded-xl border px-2 py-2 text-center ${s.light}`}>
+                        <div className={`text-xs font-black px-1 py-0.5 rounded-full inline-block mb-1 ${s.bg} ${s.text}`}>{colorTeam}</div>
+                        <div className="text-xl font-black">{wins}</div>
+                        <div className="text-xs text-gray-400">{played > 0 ? `${played}j` : '—'}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {live && (
+        <FfaDetail
+          tournament={live}
+          teams={teams}
+          courts={courts}
+          onReload={onReload}
+          notify={notify}
+          onClose={() => setSelected(null)}
+        />
+      )}
+      {confirmModal}
+    </>
+  )
+}
+
+// ── FfaDetail ──────────────────────────────────────────────────────
+function FfaDetail({ tournament, teams, courts, onReload, notify, onClose }) {
+  const [tab, setTab]           = useState('times')
+  const [activeColor, setActiveColor] = useState('Verde')
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [dropOpen, setDropOpen]   = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [colorFilter, setColorFilter] = useState('')
+  const [catFilter, setCatFilter]     = useState('')
+  const dropRef = useRef(null)
+  const { confirm, modal: confirmModal } = useConfirm()
+
+  const action = async (id, act, body = {}) => {
+    try {
+      const res = await api.post(`/matches/${id}/${act}`, body)
+      onReload()
+      if (act === 'call') notify('📢 Chamada enviada para a TV!')
+      if (act === 'mark-next') notify(res.isNext ? '📌 Marcado como próxima!' : 'Desmarcado.')
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  // Fecha dropdown ao clicar fora
+  useEffect(() => {
+    if (!dropOpen) return
+    const h = (e) => { if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [dropOpen])
+
+  // Reset seleção ao trocar de cor
+  useEffect(() => { setSelectedIds(new Set()); setDropOpen(false) }, [activeColor])
+
+  const addBatch = async () => {
+    if (selectedIds.size === 0) return
+    try {
+      const res = await api.post(`/tournaments/${tournament.id}/ffa-batch-teams`, {
+        colorTeam: activeColor,
+        teamIds:   [...selectedIds],
+      })
+      setSelectedIds(new Set()); setDropOpen(false)
+      onReload()
+      notify(`${selectedIds.size} dupla(s) adicionadas ao Time ${activeColor}!`)
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  const removeDupla = async (teamId) => {
+    try {
+      await authFetch(`${API_URL}/tournaments/${tournament.id}/ffa-teams/${teamId}`, { method: 'DELETE' })
+      onReload(); notify('Dupla removida.')
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  const autoGenerate = async () => {
+    const hasMatches = tournament.matches.some(m => !['semi','final','terceiro lugar'].includes(m.round))
+    if (hasMatches && !await confirm('Isso vai apagar os grupos existentes e recriar tudo. Continuar?')) return
+    setGenerating(true)
+    try {
+      const res = await api.post(`/tournaments/${tournament.id}/ffa-auto-generate`, {})
+      onReload()
+      notify(`✅ ${res.matchesCreated} partidas criadas!`)
+      setTab('partidas')
+    } catch (err) { notify(err.message, 'err') }
+    finally { setGenerating(false) }
+  }
+
+  const generateFinals = async () => {
+    try {
+      await api.post(`/tournaments/${tournament.id}/ffa-finals`, {})
+      onReload(); notify('Final gerada!')
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  const teamColor = new Map(tournament.entries.map(e => [e.teamId, e.colorTeam]))
+  const ranked    = ffaStandings(tournament)
+
+  // Duplas already assigned to each color
+  const byColor = {}
+  for (const c of FFA_COLORS) byColor[c] = tournament.entries.filter(e => e.colorTeam === c)
+
+  // Teams NOT yet in this tournament, filtered by the active color tag
+  const assignedIds = new Set(tournament.entries.map(e => e.teamId))
+  const available   = teams.filter(t => !assignedIds.has(t.id) && t.colorTeam === activeColor)
+
+  const FINALS_ROUNDS = ['semi', 'final', 'terceiro lugar']
+  const finalMatches  = tournament.matches.filter(m => FINALS_ROUNDS.includes(m.round))
+  const regularMatches = tournament.matches.filter(m => !FINALS_ROUNDS.includes(m.round))
+  const flatMatches = [...regularMatches].sort((a, b) => {
+    const finA = a.status === 'finished' ? 1 : 0
+    const finB = b.status === 'finished' ? 1 : 0
+    return finA !== finB ? finA - finB : a.position - b.position
+  })
+  const categories = [...new Set(regularMatches.map(m => m.category).filter(Boolean))]
+
+  const done  = tournament.matches.filter(m => m.status === 'finished').length
+  const total = tournament.matches.length
+
+  // Count per color for summary
+  const colorCount = {}
+  for (const c of FFA_COLORS) colorCount[c] = byColor[c].length
+
+  return (
+    <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
+      <div className="sticky top-0 z-20 rounded-t-2xl overflow-hidden">
+      {/* Header */}
+      <div className="bg-gray-900 text-white px-6 py-4 flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black">{tournament.name}</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {tournament.entries.length} duplas · {done}/{total} partidas
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {total === 0 && tournament.entries.length > 0 && (
+            <Btn color="green" disabled={generating} onClick={autoGenerate}>
+              {generating ? '⏳ Gerando...' : '⚡ Gerar Todos os Jogos'}
+            </Btn>
+          )}
+          {total > 0 && (
+            <>
+              <Btn color="blue" onClick={generateFinals}>🏆 Gerar Final</Btn>
+              <Btn color="gray" disabled={generating} onClick={autoGenerate}>
+                {generating ? '⏳...' : '🔄 Regerar Jogos'}
+              </Btn>
+            </>
+          )}
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+        </div>
+      </div>
+
+      {/* Standings (só aparece se há partidas) */}
+      {total > 0 && (
+        <div className="px-6 py-4 border-b border-gray-100 bg-white">
+          <h3 className="text-xs font-black text-gray-500 uppercase tracking-wider mb-3">Placar Geral dos Times</h3>
+          <div className="grid grid-cols-4 gap-3">
+            {ranked.map(({ colorTeam, wins, losses, draws, played }, i) => {
+              const s = COLOR_STYLE[colorTeam]
+              const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}°`
+              return (
+                <div key={colorTeam} className={`rounded-xl border p-3 text-center ${s.light}`}>
+                  <div className={`text-xs font-black px-2 py-0.5 rounded-full inline-block mb-2 ${s.bg} ${s.text}`}>
+                    {medal} {colorTeam}
+                  </div>
+                  <div className="text-3xl font-black">{wins}</div>
+                  <div className="text-xs text-gray-400">vitórias</div>
+                  {played > 0 && <div className="text-xs text-gray-400 mt-0.5">{draws}E · {losses}D</div>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      </div>{/* /sticky */}
+
+      {/* Hint quando não há partidas */}
+      {total === 0 && tournament.entries.length > 0 && (
+        <div className="mx-6 mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800">
+          <span className="font-bold">Próximo passo:</span> clique em <strong>"⚡ Gerar Todos os Jogos"</strong> para criar automaticamente todos os grupos e partidas.
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex border-b border-gray-100 px-6 mt-4">
+        {[['times', 'Times'], ['partidas', 'Partidas']].map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`py-3 px-4 text-sm font-semibold border-b-2 transition-colors ${
+              tab === id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-400 hover:text-gray-700'
+            }`}>{label}</button>
+        ))}
+      </div>
+
+      <div className="p-6">
+
+        {/* ── ABA: TIMES ── */}
+        {tab === 'times' && (
+          <div className="space-y-5">
+            {/* Seletor de cor ativa */}
+            <div className="flex gap-2 flex-wrap">
+              {FFA_COLORS.map(color => {
+                const s = COLOR_STYLE[color]
+                const cnt = colorCount[color]
+                return (
+                  <button key={color} onClick={() => setActiveColor(color)}
+                    className={`px-4 py-2 rounded-xl font-black text-sm border-2 transition-all ${
+                      activeColor === color
+                        ? `${s.bg} ${s.text} border-transparent shadow-md scale-105`
+                        : 'border-gray-200 text-gray-500 hover:border-gray-400 bg-white'
+                    }`}>
+                    {color}
+                    <span className={`ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                      activeColor === color ? 'bg-white/30' : 'bg-gray-100 text-gray-500'
+                    }`}>{cnt}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Adicionar duplas ao time ativo */}
+            {(() => {
+              const s = COLOR_STYLE[activeColor]
+              return (
+                <div className={`rounded-2xl border p-4 ${s.light}`}>
+                  <div className={`text-xs font-black px-2 py-0.5 rounded-full inline-block mb-3 ${s.bg} ${s.text}`}>
+                    Time {activeColor} — {colorCount[activeColor]} dupla(s)
+                  </div>
+
+                  {/* Multi-select dropdown */}
+                  <div className="flex gap-3 items-start mb-4">
+                    <div className="flex-1 relative" ref={dropRef}>
+                      <button type="button"
+                        onClick={() => available.length > 0 && setDropOpen(v => !v)}
+                        disabled={available.length === 0}
+                        className="input w-full text-left flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span className={selectedIds.size > 0 ? 'text-gray-800 text-sm' : 'text-gray-400 text-sm'}>
+                          {available.length === 0
+                            ? 'Nenhuma dupla disponível'
+                            : selectedIds.size > 0
+                              ? `${selectedIds.size} dupla(s) selecionada(s)`
+                              : `Selecionar duplas (${available.length} disponíveis)...`}
+                        </span>
+                        <span className="text-gray-400 ml-2">{dropOpen ? '▲' : '▼'}</span>
+                      </button>
+
+                      {dropOpen && (
+                        <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-64 overflow-y-auto">
+                          {/* Selecionar todos */}
+                          <label className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer text-sm border-b border-gray-200 sticky top-0 bg-white">
+                            <input type="checkbox"
+                              checked={available.length > 0 && selectedIds.size === available.length}
+                              onChange={() => {
+                                if (selectedIds.size === available.length) setSelectedIds(new Set())
+                                else setSelectedIds(new Set(available.map(t => t.id)))
+                              }}
+                              className="accent-blue-600 w-4 h-4 shrink-0" />
+                            <span className="font-black text-gray-600">Selecionar todos ({available.length})</span>
+                          </label>
+                          {available.map(t => {
+                            const checked = selectedIds.has(t.id)
+                            return (
+                              <label key={t.id}
+                                className="flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50 last:border-0">
+                                <input type="checkbox" checked={checked}
+                                  onChange={() => setSelectedIds(prev => {
+                                    const next = new Set(prev)
+                                    checked ? next.delete(t.id) : next.add(t.id)
+                                    return next
+                                  })}
+                                  className="accent-blue-600 w-4 h-4 shrink-0" />
+                                <div className="min-w-0">
+                                  <span className="font-semibold">{t.player1} / {t.player2}</span>
+                                  {t.category && (
+                                    <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${teamCatStyle(t.category)}`}>{t.category}</span>
+                                  )}
+                                </div>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <Btn color="blue" onClick={addBatch} disabled={selectedIds.size === 0}>
+                      {selectedIds.size > 1 ? `Adicionar (${selectedIds.size})` : 'Adicionar'}
+                    </Btn>
+                  </div>
+
+                  {/* Lista de duplas já no time */}
+                  {byColor[activeColor].length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">Nenhuma dupla no Time {activeColor} ainda.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
+                      {byColor[activeColor].map(e => (
+                        <div key={e.id}
+                          className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 text-xs border border-white/60">
+                          <div className="min-w-0">
+                            <span className="font-semibold text-gray-800">{e.team.player1} / {e.team.player2}</span>
+                            {e.team.category && (
+                              <span className={`ml-1.5 text-xs px-1 py-0.5 rounded-full ${teamCatStyle(e.team.category)}`}>{e.team.category}</span>
+                            )}
+                          </div>
+                          <button onClick={() => removeDupla(e.teamId)}
+                            className="text-gray-300 hover:text-red-500 ml-2 shrink-0 transition-colors">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Resumo e botão de gerar */}
+            <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-gray-100">
+              <div className="flex gap-3 flex-wrap">
+                {FFA_COLORS.map(c => {
+                  const s = COLOR_STYLE[c]
+                  return (
+                    <span key={c} className={`text-xs font-bold px-2 py-1 rounded-lg border ${s.light}`}>
+                      {c}: {colorCount[c]}
+                    </span>
+                  )
+                })}
+              </div>
+              <Btn color="green" disabled={generating || tournament.entries.length === 0} onClick={autoGenerate}>
+                {generating ? '⏳ Gerando...' : '⚡ Gerar Todos os Jogos'}
+              </Btn>
+              <span className="text-xs text-gray-400">
+                Agrupa automaticamente por categoria e cria 6 partidas por grupo.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── ABA: PARTIDAS ── */}
+        {tab === 'partidas' && (
+          <>
+            {/* Filtros */}
+            {flatMatches.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {/* Filtro por time */}
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => setColorFilter('')}
+                    className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
+                      !colorFilter ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                    }`}>Todos os times</button>
+                  {FFA_COLORS.map(c => {
+                    const s = COLOR_STYLE[c]
+                    const active = colorFilter === c
+                    return (
+                      <button key={c} onClick={() => setColorFilter(active ? '' : c)}
+                        className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
+                          active ? `${s.bg} ${s.text} border-transparent` : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                        }`}>{c}</button>
+                    )
+                  })}
+                </div>
+                {/* Filtro por categoria */}
+                {categories.length > 0 && (
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => setCatFilter('')}
+                      className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
+                        !catFilter ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                      }`}>Todas as categorias</button>
+                    {categories.map(c => (
+                      <button key={c} onClick={() => setCatFilter(catFilter === c ? '' : c)}
+                        className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
+                          catFilter === c ? `${teamCatStyle(c)} border-current` : 'border-gray-200 text-gray-500 hover:border-gray-400'
+                        }`}>{c}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {flatMatches.length === 0 && finalMatches.length === 0 && (
+              <div className="text-center py-12 text-gray-400">
+                <p className="text-4xl mb-3">🎾</p>
+                <p className="font-semibold">Nenhuma partida ainda.</p>
+                <p className="text-sm mt-1">Adicione duplas na aba <strong>Times</strong> e clique em <strong>⚡ Gerar Todos os Jogos</strong>.</p>
+              </div>
+            )}
+
+            {(() => {
+              const visible = flatMatches.filter(m =>
+                (!colorFilter || teamColor.get(m.teamAId) === colorFilter || teamColor.get(m.teamBId) === colorFilter) &&
+                (!catFilter   || m.category === catFilter)
+              )
+              if (visible.length === 0 && (colorFilter || catFilter)) return (
+                <p className="text-sm text-gray-400 italic text-center py-6">Nenhuma partida encontrada para os filtros selecionados.</p>
+              )
+              return (
+                <div className="space-y-2">
+                  {visible.map(m => (
+                    <FfaMatchRow
+                      key={m.id}
+                      match={m}
+                      colorA={teamColor.get(m.teamAId)}
+                      colorB={teamColor.get(m.teamBId)}
+                      courts={courts}
+                      onAction={action}
+                      onReload={onReload}
+                    />
+                  ))}
+                </div>
+              )
+            })()}
+
+            {finalMatches.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-black bg-yellow-500 text-white px-2 py-0.5 rounded-full">🏆 FINAL</span>
+                  <div className="h-px flex-1 bg-gray-100" />
+                </div>
+                <div className="space-y-2">
+                  {finalMatches.sort((a, b) => a.position - b.position).map(m => (
+                    <TournamentMatchRow key={m.id} match={m} courts={courts} onAction={action} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {confirmModal}
+    </div>
+  )
+}
+
+// ── FfaMatchRow ───────────────────────────────────────────────────
+function FfaMatchRow({ match, colorA, colorB, courts, onAction, onReload }) {
+  const [sA, setSA]       = useState(String(match.scoreA))
+  const [sB, setSB]       = useState(String(match.scoreB))
+  const [courtId, setCourtId] = useState(match.courtId || '')
+  const [pos, setPos]     = useState(String(match.position ?? ''))
+
+  useEffect(() => {
+    setSA(String(match.scoreA)); setSB(String(match.scoreB))
+    setCourtId(match.courtId || '')
+    setPos(String(match.position ?? ''))
+  }, [match.scoreA, match.scoreB, match.courtId, match.position])
+
+  const savePos = async () => {
+    const n = parseInt(pos)
+    if (isNaN(n) || n === match.position) return
+    try { await api.put(`/matches/${match.id}/position`, { position: n }); onReload() }
+    catch { setPos(String(match.position ?? '')) }
+  }
+
+  const nameA = match.teamA ? `${match.teamA.player1} / ${match.teamA.player2}` : 'A definir'
+  const nameB = match.teamB ? `${match.teamB.player1} / ${match.teamB.player2}` : 'A definir'
+  const winA  = match.winnerTeamId === match.teamAId
+  const winB  = match.winnerTeamId === match.teamBId
+  const sA_cs = colorA ? COLOR_STYLE[colorA] : null
+  const sB_cs = colorB ? COLOR_STYLE[colorB] : null
+
+  const topBg = match.status === 'playing' ? 'bg-green-600' : match.status === 'finished' ? 'bg-gray-500' : 'bg-gray-700'
+
+  return (
+    <div className={`rounded-xl border overflow-hidden ${match.status === 'playing' ? 'border-green-300' : 'border-gray-200'}`}>
+      <div className={`flex items-center gap-2 px-3 py-1.5 ${topBg} text-white text-xs`}>
+        {match.isNext ? (
+          <span className="font-black bg-purple-500 px-2 py-0.5 rounded-full animate-pulse">📌 Próxima</span>
+        ) : (
+          <span className={`font-semibold ${match.status === 'playing' ? 'text-green-100' : match.status === 'finished' ? 'text-gray-200' : 'text-amber-300'}`}>
+            {match.status === 'playing' ? '● Em Jogo' : match.status === 'finished' ? '✓ Finalizada' : '○ Aguardando'}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-1 shrink-0">
+          <span className="text-white/50">#</span>
+          <input
+            type="number" min="1" value={pos}
+            onChange={e => setPos(e.target.value)}
+            onBlur={savePos}
+            onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+            className="w-10 text-center bg-white/20 hover:bg-white/30 focus:bg-white/30 rounded text-white font-bold outline-none text-xs py-0.5"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 px-3 py-2 bg-white">
+        <div className="flex-1 text-right">
+          {sA_cs && <span className={`text-xs font-black px-1.5 py-0.5 rounded-full mr-1 ${sA_cs.bg} ${sA_cs.text}`}>{colorA}</span>}
+          <span className={`text-xs font-semibold ${winA ? 'text-green-700 font-black' : 'text-gray-700'}`}>
+            {winA && '🏆 '}{nameA}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {match.status === 'playing' && (
+            <button onClick={() => onAction(match.id, 'score', { team: 'A' })}
+              className="w-6 h-6 bg-blue-600 text-white rounded text-xs font-black hover:bg-blue-700 active:scale-95">+</button>
+          )}
+          {match.status !== 'finished' ? (
+            <input type="number" min="0" value={sA} onChange={e => setSA(e.target.value)}
+              className="w-8 text-center text-sm font-black border rounded outline-none text-blue-700 py-0.5" />
+          ) : (
+            <span className={`text-xl font-black w-7 text-center ${winA ? 'text-green-700' : 'text-blue-600'}`}>{match.scoreA}</span>
+          )}
+          <span className="text-gray-300 font-bold text-sm">×</span>
+          {match.status !== 'finished' ? (
+            <input type="number" min="0" value={sB} onChange={e => setSB(e.target.value)}
+              className="w-8 text-center text-sm font-black border rounded outline-none text-red-700 py-0.5" />
+          ) : (
+            <span className={`text-xl font-black w-7 text-center ${winB ? 'text-green-700' : 'text-red-600'}`}>{match.scoreB}</span>
+          )}
+          {match.status === 'playing' && (
+            <button onClick={() => onAction(match.id, 'score', { team: 'B' })}
+              className="w-6 h-6 bg-red-600 text-white rounded text-xs font-black hover:bg-red-700 active:scale-95">+</button>
+          )}
+        </div>
+
+        <div className="flex-1">
+          <span className={`text-xs font-semibold ${winB ? 'text-green-700 font-black' : 'text-gray-700'}`}>
+            {winB && '🏆 '}{nameB}
+          </span>
+          {sB_cs && <span className={`text-xs font-black px-1.5 py-0.5 rounded-full ml-1 ${sB_cs.bg} ${sB_cs.text}`}>{colorB}</span>}
+        </div>
+      </div>
+
+      {match.status !== 'finished' && (
+        <div className="flex items-center gap-2 px-3 pb-2 bg-white flex-wrap">
+          <select
+            value={courtId}
+            onChange={e => { const v = e.target.value; setCourtId(v); onAction(match.id, 'court', { courtId: v || null }) }}
+            disabled={courts.length === 0}
+            className={`text-xs py-1 px-2 rounded border outline-none ${courtId ? 'border-blue-400 bg-blue-600 text-white font-semibold' : 'border-gray-300 text-gray-500 bg-white'}`}
+          >
+            <option value="">{courts.length === 0 ? 'Sem quadras' : '🏖 Quadra...'}</option>
+            {courts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {match.status === 'waiting' && (
+            <>
+              <button onClick={() => onAction(match.id, 'mark-next')}
+                title={match.isNext ? 'Desmarcar' : 'Marcar como próxima'}
+                className={`px-2 py-1 text-xs font-semibold rounded-lg border transition-colors ${
+                  match.isNext ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-400 border-gray-200 hover:border-purple-400 hover:text-purple-600'
+                }`}>📌</button>
+              <button onClick={() => onAction(match.id, 'call')}
+                disabled={!courtId}
+                className={`px-2 py-1 text-xs font-semibold rounded transition-colors ${!courtId ? 'opacity-40 cursor-not-allowed bg-gray-100 text-gray-400' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>
+                📢 Chamar
+              </button>
+              <button onClick={() => onAction(match.id, 'start')}
+                className="px-2 py-1 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700">▶ Iniciar</button>
+            </>
+          )}
+          {match.status === 'playing' && (
+            <button onClick={() => onAction(match.id, 'undo')}
+              className="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-600 hover:bg-gray-200">↩</button>
+          )}
+          <button onClick={() => onAction(match.id, 'finish', { scoreA: +sA, scoreB: +sB })}
+            className="px-2.5 py-1 text-xs font-bold bg-blue-600 text-white rounded hover:bg-blue-700 active:scale-95 ml-auto">
+            ■ Finalizar
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Shared UI helpers ─────────────────────────────────────────────
