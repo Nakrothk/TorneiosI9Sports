@@ -6,6 +6,7 @@ const PUBLIC = [
   { method: 'POST', path: '/auth/login' },
   { method: 'GET',  path: '/matches/tv' },
   { method: 'GET',  path: '/health' },
+  { method: 'GET',  path: '/tournaments' },
 ]
 
 module.exports = function auth(req, res, next) {
