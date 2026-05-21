@@ -2535,6 +2535,7 @@ function FfaDetail({ tournament, teams, courts, onReload, notify, onClose }) {
                       colorA={teamColor.get(m.teamAId)}
                       colorB={teamColor.get(m.teamBId)}
                       courts={courts}
+                      entries={tournament.entries}
                       onAction={action}
                       onReload={onReload}
                     />
@@ -2565,17 +2566,33 @@ function FfaDetail({ tournament, teams, courts, onReload, notify, onClose }) {
 }
 
 // ── FfaMatchRow ───────────────────────────────────────────────────
-function FfaMatchRow({ match, colorA, colorB, courts, onAction, onReload }) {
+function FfaMatchRow({ match, colorA, colorB, courts, entries = [], onAction, onReload }) {
   const [sA, setSA]       = useState(String(match.scoreA))
   const [sB, setSB]       = useState(String(match.scoreB))
   const [courtId, setCourtId] = useState(match.courtId || '')
   const [pos, setPos]     = useState(String(match.position ?? ''))
+  const [swapping, setSwapping] = useState(false)
+  const [swapA, setSwapA] = useState(match.teamAId || '')
+  const [swapB, setSwapB] = useState(match.teamBId || '')
 
   useEffect(() => {
     setSA(String(match.scoreA)); setSB(String(match.scoreB))
     setCourtId(match.courtId || '')
     setPos(String(match.position ?? ''))
-  }, [match.scoreA, match.scoreB, match.courtId, match.position])
+    setSwapA(match.teamAId || '')
+    setSwapB(match.teamBId || '')
+  }, [match.scoreA, match.scoreB, match.courtId, match.position, match.teamAId, match.teamBId])
+
+  const saveSwap = async () => {
+    try {
+      await api.post(`/matches/${match.id}/set-teams`, {
+        teamAId: swapA || null,
+        teamBId: swapB || null,
+      })
+      setSwapping(false)
+      onReload()
+    } catch {}
+  }
 
   const savePos = async () => {
     const n = parseInt(pos)
@@ -2673,6 +2690,12 @@ function FfaMatchRow({ match, colorA, colorB, courts, onAction, onReload }) {
                 className={`px-2 py-1 text-xs font-semibold rounded-lg border transition-colors ${
                   match.isNext ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-400 border-gray-200 hover:border-purple-400 hover:text-purple-600'
                 }`}>📌</button>
+              <button
+                onClick={() => setSwapping(s => !s)}
+                title="Trocar duplas"
+                className={`px-2 py-1 text-xs font-semibold rounded-lg border transition-colors ${
+                  swapping ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-400 border-gray-200 hover:border-amber-400 hover:text-amber-600'
+                }`}>✏️</button>
               <button onClick={() => onAction(match.id, 'call')}
                 disabled={!courtId}
                 className={`px-2 py-1 text-xs font-semibold rounded transition-colors ${!courtId ? 'opacity-40 cursor-not-allowed bg-gray-100 text-gray-400' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>
@@ -2690,6 +2713,51 @@ function FfaMatchRow({ match, colorA, colorB, courts, onAction, onReload }) {
             className="px-2.5 py-1 text-xs font-bold bg-blue-600 text-white rounded hover:bg-blue-700 active:scale-95 ml-auto">
             ■ Finalizar
           </button>
+        </div>
+      )}
+
+      {/* Painel de troca de duplas */}
+      {swapping && match.status === 'waiting' && (
+        <div className="px-3 pb-3 bg-amber-50 border-t border-amber-200">
+          <p className="text-xs font-bold text-amber-700 mt-2 mb-2">Trocar duplas</p>
+          <div className="flex flex-col gap-2">
+            {[['A', swapA, setSwapA, colorA], ['B', swapB, setSwapB, colorB]].map(([side, val, setVal, color]) => {
+              const sideEntries = entries.length > 0
+                ? [...entries].sort((a, b) => {
+                    if (a.colorTeam === color && b.colorTeam !== color) return -1
+                    if (b.colorTeam === color && a.colorTeam !== color) return 1
+                    return 0
+                  })
+                : []
+              return (
+                <div key={side} className="flex items-center gap-2">
+                  <span className={`text-xs font-black w-4 text-center ${side === 'A' ? 'text-blue-600' : 'text-red-600'}`}>{side}</span>
+                  <select
+                    value={val}
+                    onChange={e => setVal(e.target.value)}
+                    className="flex-1 text-xs border border-amber-300 rounded px-2 py-1 outline-none bg-white"
+                  >
+                    <option value="">— sem dupla —</option>
+                    {sideEntries.map(e => (
+                      <option key={e.teamId} value={e.teamId}>
+                        [{e.colorTeam}] {e.team?.player1} / {e.team?.player2}{e.team?.category ? ` (${e.team.category})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })}
+            <div className="flex gap-2 mt-1">
+              <button onClick={saveSwap}
+                className="px-3 py-1 text-xs font-bold bg-amber-500 text-white rounded hover:bg-amber-600">
+                Salvar
+              </button>
+              <button onClick={() => { setSwapping(false); setSwapA(match.teamAId || ''); setSwapB(match.teamBId || '') }}
+                className="px-3 py-1 text-xs font-semibold bg-white text-gray-500 border border-gray-300 rounded hover:bg-gray-50">
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
