@@ -2159,6 +2159,72 @@ function CopaTab({ tournaments, teams, courts, onReload, notify }) {
   )
 }
 
+// ── printFfaMatches ────────────────────────────────────────────────
+function printFfaMatches(tournament, matches, teamColor) {
+  const STATUS_LABEL = { waiting: 'Aguardando', playing: 'Em Jogo', finished: 'Finalizada' }
+  const COLOR_HEX = { Verde: '#16a34a', Amarelo: '#ca8a04', Azul: '#2563eb', Branco: '#6b7280' }
+
+  // Agrupa por categoria
+  const byCategory = {}
+  for (const m of matches) {
+    const cat = m.category || 'Sem categoria'
+    if (!byCategory[cat]) byCategory[cat] = []
+    byCategory[cat].push(m)
+  }
+
+  const rows = Object.entries(byCategory).map(([cat, ms]) => {
+    const matchRows = ms.map((m, i) => {
+      const cA = teamColor.get(m.teamAId) || ''
+      const cB = teamColor.get(m.teamBId) || ''
+      const nameA = m.teamA ? `${m.teamA.player1} / ${m.teamA.player2}` : 'A definir'
+      const nameB = m.teamB ? `${m.teamB.player1} / ${m.teamB.player2}` : 'A definir'
+      const hexA = COLOR_HEX[cA] || '#000'
+      const hexB = COLOR_HEX[cB] || '#000'
+      const score = m.status === 'finished' ? `${m.scoreA}×${m.scoreB}` : '  ×  '
+      const bg = i % 2 === 0 ? '' : 'background:#f3f4f6'
+      return `<tr style="${bg}">
+        <td style="color:#aaa;width:20px;text-align:center">${m.position || ''}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <b style="color:${hexA}">[${cA}]</b> ${nameA}
+        </td>
+        <td style="text-align:center;font-weight:900;color:#444;width:55px;white-space:nowrap">${score}</td>
+        <td style="text-align:left;white-space:nowrap">
+          ${nameB} <b style="color:${hexB}">[${cB}]</b>
+        </td>
+      </tr>`
+    }).join('')
+
+    return `<div style="margin-bottom:8px">
+      <div style="background:#1e293b;color:#fff;padding:2px 8px;font-weight:900;font-size:11px;text-transform:uppercase;letter-spacing:.05em">${cat}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>${matchRows}</tbody></table>
+    </div>`
+  }).join('')
+
+  const done  = matches.filter(m => m.status === 'finished').length
+  const total = matches.length
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>${tournament.name}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 12px; color: #111; }
+      td { padding: 2px 4px; }
+      @media print { body { padding: 4px; } }
+    </style>
+  </head><body>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;border-bottom:2px solid #1e293b;padding-bottom:4px">
+      <b style="font-size:15px">${tournament.name}</b>
+      <span style="font-size:10px;color:#888">${done}/${total} finalizadas · ${new Date().toLocaleDateString('pt-BR')}</span>
+    </div>
+    ${rows}
+  </body></html>`
+
+  const w = window.open('', '_blank', 'width=900,height=700')
+  w.document.write(html)
+  w.document.close()
+  w.focus()
+  setTimeout(() => w.print(), 400)
+}
+
 // ── FfaDetail ──────────────────────────────────────────────────────
 function FfaDetail({ tournament, teams, courts, onReload, notify, onClose }) {
   const [tab, setTab]           = useState('times')
@@ -2282,6 +2348,7 @@ function FfaDetail({ tournament, teams, courts, onReload, notify, onClose }) {
               <Btn color="gray" disabled={generating} onClick={autoGenerate}>
                 {generating ? '⏳...' : '🔄 Regerar Jogos'}
               </Btn>
+              <Btn color="gray" onClick={() => printFfaMatches(tournament, flatMatches, teamColor)}>🖨️ Imprimir</Btn>
             </>
           )}
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
