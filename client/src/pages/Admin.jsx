@@ -2641,6 +2641,7 @@ function FfaMatchRow({ match, colorA, colorB, courts, entries = [], onAction, on
   const [swapping, setSwapping] = useState(false)
   const [swapA, setSwapA] = useState(match.teamAId || '')
   const [swapB, setSwapB] = useState(match.teamBId || '')
+  const [editing, setEditing] = useState(false)
 
   useEffect(() => {
     setSA(String(match.scoreA)); setSB(String(match.scoreB))
@@ -2687,6 +2688,14 @@ function FfaMatchRow({ match, colorA, colorB, courts, entries = [], onAction, on
             {match.status === 'playing' ? '● Em Jogo' : match.status === 'finished' ? '✓ Finalizada' : '○ Aguardando'}
           </span>
         )}
+        {match.status === 'finished' && (
+          <button
+            onClick={() => { setEditing(e => !e); setSA(String(match.scoreA)); setSB(String(match.scoreB)) }}
+            title="Editar placar"
+            className={`ml-1 px-2 py-0.5 text-xs font-semibold rounded transition-colors ${editing ? 'bg-white text-gray-800' : 'bg-white/20 hover:bg-white/30 text-white'}`}>
+            ✏️
+          </button>
+        )}
         <div className="ml-auto flex items-center gap-1 shrink-0">
           <span className="text-white/50">#</span>
           <input
@@ -2712,14 +2721,14 @@ function FfaMatchRow({ match, colorA, colorB, courts, entries = [], onAction, on
             <button onClick={() => onAction(match.id, 'score', { team: 'A' })}
               className="w-6 h-6 bg-blue-600 text-white rounded text-xs font-black hover:bg-blue-700 active:scale-95">+</button>
           )}
-          {match.status !== 'finished' ? (
+          {(match.status !== 'finished' || editing) ? (
             <input type="number" min="0" value={sA} onChange={e => setSA(e.target.value)}
               className="w-8 text-center text-sm font-black border rounded outline-none text-blue-700 py-0.5" />
           ) : (
             <span className={`text-xl font-black w-7 text-center ${winA ? 'text-green-700' : 'text-blue-600'}`}>{match.scoreA}</span>
           )}
           <span className="text-gray-300 font-bold text-sm">×</span>
-          {match.status !== 'finished' ? (
+          {(match.status !== 'finished' || editing) ? (
             <input type="number" min="0" value={sB} onChange={e => setSB(e.target.value)}
               className="w-8 text-center text-sm font-black border rounded outline-none text-red-700 py-0.5" />
           ) : (
@@ -2738,6 +2747,25 @@ function FfaMatchRow({ match, colorA, colorB, courts, entries = [], onAction, on
           {sB_cs && <span className={`text-xs font-black px-1.5 py-0.5 rounded-full ml-1 ${sB_cs.bg} ${sB_cs.text}`}>{colorB}</span>}
         </div>
       </div>
+
+      {editing && match.status === 'finished' && (
+        <div className="flex items-center gap-2 px-3 pb-2 bg-white">
+          <span className="text-xs text-gray-400">Corrigir placar</span>
+          <button
+            onClick={async () => {
+              try { await api.post(`/matches/${match.id}/edit`, { scoreA: +sA, scoreB: +sB }); setEditing(false); onReload() }
+              catch {}
+            }}
+            className="px-3 py-1 text-xs font-bold bg-blue-600 text-white rounded hover:bg-blue-700 ml-auto">
+            Salvar
+          </button>
+          <button
+            onClick={() => { setEditing(false); setSA(String(match.scoreA)); setSB(String(match.scoreB)) }}
+            className="px-3 py-1 text-xs font-semibold bg-white text-gray-500 border border-gray-300 rounded hover:bg-gray-50">
+            Cancelar
+          </button>
+        </div>
+      )}
 
       {match.status !== 'finished' && (
         <div className="flex items-center gap-2 px-3 pb-2 bg-white flex-wrap">

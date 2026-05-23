@@ -24,13 +24,13 @@ function getAudioCtx() {
   return _audioCtx
 }
 
-function playSound(notes) {
+function playSound(notes, { type = 'sine', volume = 0.45 } = {}) {
   try {
     const ctx = getAudioCtx()
     const resume = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve()
     resume.then(() => {
       const master = ctx.createGain()
-      master.gain.value = 0.45
+      master.gain.value = volume
       master.connect(ctx.destination)
 
       const chime = (freq, startT, dur) => {
@@ -38,10 +38,10 @@ function playSound(notes) {
         const gain = ctx.createGain()
         osc.connect(gain)
         gain.connect(master)
-        osc.type = 'sine'
+        osc.type = type
         osc.frequency.value = freq
         gain.gain.setValueAtTime(0, startT)
-        gain.gain.linearRampToValueAtTime(1, startT + 0.03)
+        gain.gain.linearRampToValueAtTime(1, startT + 0.02)
         gain.gain.exponentialRampToValueAtTime(0.001, startT + dur)
         osc.start(startT)
         osc.stop(startT + dur + 0.05)
@@ -54,7 +54,7 @@ function playSound(notes) {
 }
 
 function playCallSound() {
-  // Arpejo ascendente: Dó – Mi – Sol – Dó (oitava acima)
+  // Arpejo ascendente suave: Dó – Mi – Sol – Dó (oitava acima)
   playSound([
     [523.25, 0.00, 0.6],
     [659.25, 0.18, 0.6],
@@ -64,11 +64,15 @@ function playCallSound() {
 }
 
 function playNextSound() {
-  // Dois tons suaves descendentes — diferente da chamada
+  // Fanfarra turururum: notas rápidas ascendentes com onda quadrada (timbre de trompete)
   playSound([
-    [622.25, 0.00, 0.5],
-    [466.16, 0.22, 0.8],
-  ])
+    [523.25, 0.00, 0.10],
+    [659.25, 0.09, 0.10],
+    [784.00, 0.18, 0.10],
+    [659.25, 0.27, 0.10],
+    [784.00, 0.36, 0.10],
+    [1046.5, 0.46, 0.55],
+  ], { type: 'square', volume: 0.28 })
 }
 
 export default function TV() {

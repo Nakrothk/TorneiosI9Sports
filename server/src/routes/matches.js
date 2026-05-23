@@ -105,7 +105,7 @@ router.post('/:id/start', async (req, res, next) => {
     }
     const updated = await prisma.match.update({
       where: { id: req.params.id },
-      data:  { status: 'playing' },
+      data:  { status: 'playing', isNext: false },
       include,
     })
     res.json(updated)
