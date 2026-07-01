@@ -26,6 +26,24 @@ function teamCatStyle(cat) {
   if (l.startsWith('feminin'))  return 'bg-pink-100 text-pink-700'
   return 'bg-purple-100 text-purple-700'
 }
+
+function catLeftColor(cat) {
+  if (!cat) return '#e5e7eb'
+  const l = cat.toLowerCase()
+  if (l.startsWith('masculin')) return '#60a5fa' // blue-400
+  if (l.startsWith('feminin'))  return '#f472b6' // pink-400
+  if (l.startsWith('mist'))     return '#fbbf24' // amber-400
+  return '#c084fc' // purple-400
+}
+
+function catTagStyle(cat) {
+  if (!cat) return 'bg-gray-100 text-gray-500'
+  const l = cat.toLowerCase()
+  if (l.startsWith('masculin')) return 'bg-blue-100 text-blue-700'
+  if (l.startsWith('feminin'))  return 'bg-pink-100 text-pink-700'
+  if (l.startsWith('mist'))     return 'bg-amber-100 text-amber-700'
+  return 'bg-purple-100 text-purple-700'
+}
 const ROUND_ORDER  = ['oitavas', 'quartas', 'semi', 'final', 'terceiro lugar']
 const ROUND_LABELS = {
   oitavas:          'Oitavas de Final',
@@ -72,6 +90,116 @@ function printEvent(ev) {
       }).join('')}
     </div>` : ''
 
+  // ── Standalone matches (no group label, no separate bracket tournament) ──
+  const standaloneHTML = ev.standalone ? (() => {
+    const rounds = groupByRound(ev.standalone.matches)
+    const hasRounds = rounds.some(r => r.round)
+    if (hasRounds) {
+      return `<div class="bracket-wrap">
+        <div class="section-title">${esc(ev.standalone.name || ev.name)}</div>
+        <div class="groups" style="grid-template-columns:repeat(${rounds.length || 1},1fr)">
+          ${rounds.map(({ round, matches }) => `
+            <div class="box">
+              <div class="box-hd">${esc((ROUND_LABELS[round?.toLowerCase()] ?? round) || 'Partidas')}</div>
+              <table>${[...matches].sort((a, b) => (a.position||0) - (b.position||0)).map(matchRow).join('')}</table>
+            </div>`).join('')}
+        </div>
+      </div>`
+    }
+    const sorted = [...ev.standalone.matches].sort((a, b) => (a.position||0) - (b.position||0))
+    return `<div class="groups" style="grid-template-columns:1fr">
+      <div class="box">
+        <div class="box-hd">${esc(ev.standalone.name || ev.name)}</div>
+        <table>${sorted.map(matchRow).join('')}</table>
+      </div>
+    </div>`
+  })() : ''
+
+  // ── Previsão Final ────────────────────────────────────────────
+  const buildStandings = (matchList) => {
+    const tm = {}
+    for (const m of matchList) {
+      if (m.status !== 'finished') continue
+      if (m.teamA && !tm[m.teamAId]) tm[m.teamAId] = { team: m.teamA, wins: 0 }
+      if (m.teamB && !tm[m.teamBId]) tm[m.teamBId] = { team: m.teamB, wins: 0 }
+      if (m.winnerTeamId === m.teamAId && tm[m.teamAId]) tm[m.teamAId].wins++
+      if (m.winnerTeamId === m.teamBId && tm[m.teamBId]) tm[m.teamBId].wins++
+    }
+    return Object.values(tm).sort((a, b) => b.wins - a.wins)
+  }
+
+  let previewHTML = ''
+
+  if (ev.groups.length >= 2) {
+    const previewData = ev.groups.map(t => {
+      const standings = buildStandings(t.matches)
+      return { group: t.group, leader: standings[0] || null, wins: standings[0]?.wins ?? 0 }
+    })
+    const previewPairs = []
+    for (let i = 0; i < previewData.length; i += 2) previewPairs.push([previewData[i], previewData[i + 1] || null])
+    const r1Label = previewPairs.length === 1 ? 'Final' : previewPairs.length === 2 ? 'Semifinal' : 'Quartas'
+    if (previewData.some(g => g.leader)) {
+      previewHTML = `
+        <div class="bracket-wrap">
+          <div class="section-title">🔮 Previsão Final</div>
+          <div class="groups" style="grid-template-columns:1fr 1fr">
+            <div class="box">
+              <div class="box-hd">Líderes dos Grupos</div>
+              <table>${previewData.map(g => `<tr>
+                <td style="font-weight:700;color:#6d28d9;width:70px">Grupo ${esc(g.group)}</td>
+                <td>${g.leader ? esc(`${g.leader.team.player1} / ${g.leader.team.player2}`) : '<em style="color:#aaa">Aguardando...</em>'}</td>
+                <td style="color:#16a34a;font-weight:700;white-space:nowrap">${g.leader ? `${g.wins}V` : ''}</td>
+              </tr>`).join('')}</table>
+            </div>
+            <div class="box" style="border-color:#7c3aed">
+              <div class="box-hd" style="background:#7c3aed">${r1Label === 'Final' ? '🏆 Final Prevista' : r1Label}</div>
+              <table>${previewPairs.map(([a, b]) => `<tr>
+                <td style="text-align:right;font-weight:700;max-width:130px">${a.leader ? esc(`${a.leader.team.player1} / ${a.leader.team.player2}`) : `→ Grupo ${esc(a.group)}`}</td>
+                <td style="text-align:center;font-weight:900;color:#7c3aed;padding:4px 10px">vs</td>
+                <td style="font-weight:700;max-width:130px">${b ? (b.leader ? esc(`${b.leader.team.player1} / ${b.leader.team.player2}`) : `→ Grupo ${esc(b.group)}`) : '—'}</td>
+              </tr>`).join('')}</table>
+              ${previewPairs.length > 1 ? `<div style="background:#ede9fe;padding:5px 8px;font-size:10px;color:#6d28d9;font-weight:700;text-align:center">
+                🏆 Final: Vencedor ${esc(previewPairs[0]?.[0]?.group ?? '')}/${esc(previewPairs[0]?.[1]?.group ?? '')} vs Vencedor ${esc(previewPairs[1]?.[0]?.group ?? '')}/${esc(previewPairs[1]?.[1]?.group ?? '')}
+              </div>` : ''}
+            </div>
+          </div>
+        </div>`
+    }
+  } else {
+    // 1 group or standalone — show standings + predicted final (top 2)
+    const allMatches = [
+      ...ev.groups.flatMap(t => t.matches),
+      ...(ev.standalone ? ev.standalone.matches : []),
+    ]
+    const standings = buildStandings(allMatches)
+    if (standings.length >= 2) {
+      const [top1, top2] = standings
+      const tname = p => esc(`${p.team.player1} / ${p.team.player2}`)
+      previewHTML = `
+        <div class="bracket-wrap">
+          <div class="section-title">🔮 Previsão Final</div>
+          <div class="groups" style="grid-template-columns:1fr 1fr">
+            <div class="box">
+              <div class="box-hd">Melhores Desempenhos</div>
+              <table>${standings.slice(0, 6).map((p, i) => `<tr>
+                <td style="font-weight:700;color:#6d28d9;width:24px">${i + 1}°</td>
+                <td>${tname(p)}</td>
+                <td style="color:#16a34a;font-weight:700;white-space:nowrap">${p.wins}V</td>
+              </tr>`).join('')}</table>
+            </div>
+            <div class="box" style="border-color:#7c3aed">
+              <div class="box-hd" style="background:#7c3aed">🏆 Final Prevista</div>
+              <table><tr>
+                <td style="text-align:right;font-weight:700">${tname(top1)}</td>
+                <td style="text-align:center;font-weight:900;color:#7c3aed;padding:4px 10px">vs</td>
+                <td style="font-weight:700">${tname(top2)}</td>
+              </tr></table>
+            </div>
+          </div>
+        </div>`
+    }
+  }
+
   const bracketHTML2 = ev.bracket ? (() => {
     const rounds = groupByRound(ev.bracket.matches)
     return `<div class="bracket-wrap">
@@ -107,12 +235,15 @@ function printEvent(ev) {
     .done{color:#111}
     .win{font-weight:900}
     .section-title{font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;padding-bottom:4px;border-bottom:2px solid #1e293b}
+    .bracket-wrap{margin-bottom:18px}
     @media print{@page{margin:1cm;size:A4}body{padding:0}}
   </style>
 </head><body>
   <h1>${esc(ev.name)}</h1>
   ${ev.category ? `<p class="cat">${esc(ev.category)}</p>` : ''}
   ${groupsHTML}
+  ${standaloneHTML}
+  ${previewHTML}
   ${bracketHTML2}
   <script>window.onload=()=>{window.print()}<\/script>
 </body></html>`
@@ -663,6 +794,7 @@ function QuadrasTab({ courts, courtName, setCourtName, onReload, notify, createC
 function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onReload, notify }) {
   const [search,        setSearch]        = useState('')
   const [selectedKey,   setSelectedKey]   = useState(null)
+  const [layout,        setLayout]        = useState('card')
 
   const action = async (id, act, body = {}) => {
     try {
@@ -724,6 +856,16 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
       return (o[a.status] ?? 1) - (o[b.status] ?? 1) || (a.position || 0) - (b.position || 0)
     })
 
+  const listMatches = everything.map(m => {
+    const t = tournaments.find(tt => tt.id === m.tournamentId)
+    return { ...m, _category: t?.category || m.category || '', _group: t?.group || '', _tournament: t || null }
+  }).sort((a, b) => {
+    if (!a.scheduledTime && !b.scheduledTime) return (a.position || 0) - (b.position || 0)
+    if (!a.scheduledTime) return 1
+    if (!b.scheduledTime) return -1
+    return a.scheduledTime.localeCompare(b.scheduledTime)
+  })
+
   const selectedEvent = selectedKey === '__standalone'
     ? { key: '__standalone', name: 'Partidas Avulsas', category: '', groups: [], bracket: null, standalone: null, _sMatches: sMatches }
     : events.find(e => e.key === selectedKey) || null
@@ -732,14 +874,24 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
     <>
       {/* Header */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-        <div className="flex flex-wrap gap-5 text-sm mb-4">
+        <div className="flex flex-wrap gap-5 text-sm mb-4 items-center">
           <span className="flex items-center gap-1.5 font-bold text-green-700">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
             {playing} em jogo
           </span>
           <span className="font-semibold text-amber-600">{waiting} aguardando</span>
           <span className="text-gray-400">{finished} finalizadas</span>
-          <span className="text-gray-300 ml-auto text-xs">{everything.length} total</span>
+          <span className="text-gray-300 text-xs">{everything.length} total</span>
+          <div className="ml-auto flex rounded-lg overflow-hidden border border-gray-200 text-xs font-bold">
+            <button onClick={() => setLayout('card')}
+              className={`px-3 py-1.5 transition-colors ${layout === 'card' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+              ⊞ Card
+            </button>
+            <button onClick={() => setLayout('lista')}
+              className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${layout === 'lista' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+              ☰ Lista
+            </button>
+          </div>
         </div>
         <input
           type="search"
@@ -757,6 +909,30 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
           {flatList.length > 0 && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-100 overflow-hidden">
               {flatList.map(m => <ChavesMatchRow key={m.id} match={m} courts={courts} onAction={action} showContext />)}
+            </div>
+          )}
+        </>
+      ) : layout === 'lista' ? (
+        <>
+          {everything.length === 0 && <Empty msg="Nenhum torneio cadastrado. Crie um na aba Torneios." />}
+          {listMatches.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-100">
+              {listMatches.map(m => {
+                const roundLabel = ROUND_LABELS[m.round?.toLowerCase()] || m.round || ''
+                return (
+                  <div key={m.id} className="border-l-4" style={{ borderLeftColor: catLeftColor(m._category) }}>
+                    <div className="flex items-center gap-2 px-4 pt-2">
+                      <span className={`text-xs font-black px-2 py-0.5 rounded-full ${catTagStyle(m._category)}`}>
+                        {m._category || '—'}
+                      </span>
+                      {m._group && <span className="text-xs text-gray-400 font-semibold">Grupo {m._group}</span>}
+                      {roundLabel && <span className="text-xs text-gray-400">{roundLabel}</span>}
+                      {m.scheduledTime && <span className="text-xs font-bold text-gray-500 ml-auto pr-1">{m.scheduledTime}</span>}
+                    </div>
+                    <ChavesMatchRow match={m} courts={courts} onAction={action} />
+                  </div>
+                )
+              })}
             </div>
           )}
         </>
@@ -814,8 +990,40 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
 
 // ── EventCard ──────────────────────────────────────────────────────
 function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBracket }) {
-  const pct    = total > 0 ? Math.round((done / total) * 100) : 0
-  const allDone = total > 0 && done === total
+  const pct          = total > 0 ? Math.round((done / total) * 100) : 0
+  const allDone      = total > 0 && done === total
+  const [showPreview, setShowPreview] = useState(false)
+
+  const groupLeaders = ev.groups.map(t => {
+    const teamsMap = {}
+    for (const m of t.matches) {
+      if (m.status !== 'finished') continue
+      if (m.teamA && !teamsMap[m.teamAId]) teamsMap[m.teamAId] = { team: m.teamA, wins: 0 }
+      if (m.teamB && !teamsMap[m.teamBId]) teamsMap[m.teamBId] = { team: m.teamB, wins: 0 }
+      if (m.winnerTeamId === m.teamAId && teamsMap[m.teamAId]) teamsMap[m.teamAId].wins++
+      if (m.winnerTeamId === m.teamBId && teamsMap[m.teamBId]) teamsMap[m.teamBId].wins++
+    }
+    const sorted = Object.values(teamsMap).sort((a, b) => b.wins - a.wins)
+    return { group: t.group, leader: sorted[0] || null }
+  })
+
+  const matchups = []
+  for (let i = 0; i < groupLeaders.length - 1; i += 2) matchups.push([groupLeaders[i], groupLeaders[i + 1]])
+  const tname = l => l ? `${l.team.player1} / ${l.team.player2}` : null
+
+  const allStandings = (() => {
+    const allM = [...ev.groups.flatMap(t => t.matches), ...(ev.standalone ? ev.standalone.matches : [])]
+    const tm = {}
+    for (const m of allM) {
+      if (m.status !== 'finished') continue
+      if (m.teamA && !tm[m.teamAId]) tm[m.teamAId] = { team: m.teamA, wins: 0 }
+      if (m.teamB && !tm[m.teamBId]) tm[m.teamBId] = { team: m.teamB, wins: 0 }
+      if (m.winnerTeamId === m.teamAId && tm[m.teamAId]) tm[m.teamAId].wins++
+      if (m.winnerTeamId === m.teamBId && tm[m.teamBId]) tm[m.teamBId].wins++
+    }
+    return Object.values(tm).sort((a, b) => b.wins - a.wins)
+  })()
+  const canPreview = ev.groups.length >= 2 || ev.groups.length === 1 || !!ev.standalone
 
   return (
     <div
@@ -838,28 +1046,39 @@ function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBr
       </div>
 
       <div className="bg-white px-5 py-6 space-y-5">
-        {ev.groups.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {ev.groups.map(t => {
-              const ok      = t.matches.length > 0 && t.matches.every(m => m.status === 'finished')
-              const playing = t.matches.some(m => m.status === 'playing')
-              return (
-                <span key={t.id} className={`px-2 py-0.5 rounded-lg text-xs font-bold border ${
-                  playing ? 'bg-green-100 border-green-300 text-green-800' :
-                  ok      ? 'bg-gray-100 border-gray-300 text-gray-500'   :
-                            'bg-blue-50 border-blue-200 text-blue-700'
-                }`}>
-                  {ok ? '✓' : playing ? '▶' : '○'} {t.group}
-                </span>
-              )
-            })}
-            {ev.bracket && (
-              <span className="px-2 py-0.5 rounded-lg text-xs font-bold border bg-yellow-50 border-yellow-300 text-yellow-700">
-                🏆 Final
+        <div className="flex flex-wrap gap-1.5">
+          {ev.groups.map(t => {
+            const ok      = t.matches.length > 0 && t.matches.every(m => m.status === 'finished')
+            const playing = t.matches.some(m => m.status === 'playing')
+            return (
+              <span key={t.id} className={`px-2 py-0.5 rounded-lg text-xs font-bold border ${
+                playing ? 'bg-green-100 border-green-300 text-green-800' :
+                ok      ? 'bg-gray-100 border-gray-300 text-gray-500'   :
+                          'bg-blue-50 border-blue-200 text-blue-700'
+              }`}>
+                {ok ? '✓' : playing ? '▶' : '○'} {t.group}
               </span>
-            )}
-          </div>
-        )}
+            )
+          })}
+          {ev.standalone && ev.groups.length === 0 && (() => {
+            const ok      = ev.standalone.matches.length > 0 && ev.standalone.matches.every(m => m.status === 'finished')
+            const playing = ev.standalone.matches.some(m => m.status === 'playing')
+            return (
+              <span className={`px-2 py-0.5 rounded-lg text-xs font-bold border ${
+                playing ? 'bg-green-100 border-green-300 text-green-800' :
+                ok      ? 'bg-gray-100 border-gray-300 text-gray-500'   :
+                          'bg-blue-50 border-blue-200 text-blue-700'
+              }`}>
+                {ok ? '✓' : playing ? '▶' : '○'} {ev.standalone.matches.length} partidas
+              </span>
+            )
+          })()}
+          {ev.bracket && (
+            <span className="px-2 py-0.5 rounded-lg text-xs font-bold border bg-yellow-50 border-yellow-300 text-yellow-700">
+              🏆 Final
+            </span>
+          )}
+        </div>
 
         <div>
           <div className="flex justify-between text-xs text-gray-400 mb-1">
@@ -871,6 +1090,78 @@ function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBr
               style={{ width: `${pct}%` }} />
           </div>
         </div>
+
+        {canPreview && (
+          <button
+            onClick={e => { e.stopPropagation(); setShowPreview(v => !v) }}
+            className={`w-full py-1.5 text-xs font-bold rounded-xl border transition-colors active:scale-95 ${
+              showPreview ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-purple-50 text-purple-600 border-purple-100 hover:bg-purple-100'
+            }`}>
+            🔮 {showPreview ? 'Ocultar prévia' : 'Previsão Final'}
+          </button>
+        )}
+
+        {showPreview && canPreview && (
+          <div onClick={e => e.stopPropagation()} className="border border-purple-100 rounded-xl overflow-hidden">
+            {ev.groups.length >= 2 ? (
+              <>
+                <div className="bg-purple-50 px-3 py-2 border-b border-purple-100 space-y-1.5">
+                  <p className="text-xs font-black text-purple-700 uppercase tracking-wide">Líderes atuais</p>
+                  {groupLeaders.map(g => (
+                    <div key={g.group} className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-purple-500 w-16 shrink-0">Grupo {g.group}</span>
+                      {g.leader
+                        ? <span className="text-xs font-semibold text-gray-800 truncate">{tname(g.leader)} <span className="text-gray-400">({g.leader.wins}V)</span></span>
+                        : <span className="text-xs text-gray-400 italic">sem jogos ainda</span>}
+                    </div>
+                  ))}
+                </div>
+                {matchups.length > 0 && (
+                  <div className="px-3 py-2 bg-white space-y-2">
+                    <p className="text-xs font-black text-gray-500 uppercase tracking-wide">
+                      {matchups.length === 1 ? 'Final prevista' : 'Confrontos previstos'}
+                    </p>
+                    {matchups.map(([a, b], i) => (
+                      <div key={i} className="flex items-center gap-1 text-xs">
+                        <span className={`font-semibold truncate flex-1 text-right ${a.leader ? 'text-gray-800' : 'text-gray-400'}`}>
+                          {a.leader ? tname(a.leader) : `Grupo ${a.group}`}
+                        </span>
+                        <span className="font-black text-gray-300 shrink-0 px-1">vs</span>
+                        <span className={`font-semibold truncate flex-1 ${b.leader ? 'text-gray-800' : 'text-gray-400'}`}>
+                          {b.leader ? tname(b.leader) : `Grupo ${b.group}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : allStandings.length >= 2 ? (
+              <>
+                <div className="bg-purple-50 px-3 py-2 border-b border-purple-100 space-y-1.5">
+                  <p className="text-xs font-black text-purple-700 uppercase tracking-wide">Melhores desempenhos</p>
+                  {allStandings.slice(0, 4).map((p, i) => (
+                    <div key={p.team.id} className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-purple-500 w-5 shrink-0">{i + 1}°</span>
+                      <span className="text-xs font-semibold text-gray-800 truncate">{p.team.player1} / {p.team.player2} <span className="text-gray-400">({p.wins}V)</span></span>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-3 py-2 bg-white space-y-2">
+                  <p className="text-xs font-black text-gray-500 uppercase tracking-wide">Final prevista</p>
+                  <div className="flex items-center gap-1 text-xs">
+                    <span className="font-semibold truncate flex-1 text-right text-gray-800">{allStandings[0].team.player1} / {allStandings[0].team.player2}</span>
+                    <span className="font-black text-gray-300 shrink-0 px-1">vs</span>
+                    <span className="font-semibold truncate flex-1 text-gray-800">{allStandings[1].team.player1} / {allStandings[1].team.player2}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="px-3 py-4 bg-purple-50 text-xs text-gray-400 italic text-center">
+                Aguardando jogos finalizados...
+              </div>
+            )}
+          </div>
+        )}
 
         {canGenerate && (
           <button
@@ -884,12 +1175,184 @@ function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBr
   )
 }
 
+// ── PreviewBracket ─────────────────────────────────────────────────
+function PreviewBracket({ ev }) {
+  // Standings view for 1-group or standalone tournaments
+  if (ev.groups.length < 2) {
+    const allM = [...ev.groups.flatMap(t => t.matches), ...(ev.standalone ? ev.standalone.matches : [])]
+    const tm = {}
+    for (const m of allM) {
+      if (m.status !== 'finished') continue
+      if (m.teamA && !tm[m.teamAId]) tm[m.teamAId] = { team: m.teamA, wins: 0 }
+      if (m.teamB && !tm[m.teamBId]) tm[m.teamBId] = { team: m.teamB, wins: 0 }
+      if (m.winnerTeamId === m.teamAId && tm[m.teamAId]) tm[m.teamAId].wins++
+      if (m.winnerTeamId === m.teamBId && tm[m.teamBId]) tm[m.teamBId].wins++
+    }
+    const standings = Object.values(tm).sort((a, b) => b.wins - a.wins)
+    if (standings.length < 2) {
+      return <div className="flex items-center justify-center h-full text-sm text-gray-400 italic">Aguardando mais jogos...</div>
+    }
+    return (
+      <div className="flex gap-6 h-full overflow-x-auto pb-2">
+        <div className="flex flex-col min-w-52 flex-1">
+          <div className="text-center mb-3 shrink-0">
+            <span className="text-xs font-black uppercase tracking-widest text-gray-400 bg-gray-100 px-3 py-1 rounded-full">Melhores desempenhos</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {standings.slice(0, 6).map((p, i) => (
+              <div key={p.team.id} className={`rounded-xl border-2 overflow-hidden ${i < 2 ? 'border-purple-200' : 'border-gray-100'}`}>
+                <div className={`px-3 py-1 text-xs font-black ${i < 2 ? 'bg-purple-100 text-purple-700' : 'bg-gray-50 text-gray-400'}`}>{i + 1}° lugar</div>
+                <div className="px-3 py-2 bg-white flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-800 flex-1">{p.team.player1} / {p.team.player2}</span>
+                  <span className="text-xs text-green-600 font-bold shrink-0">{p.wins}V</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col min-w-52 flex-1">
+          <div className="text-center mb-3 shrink-0">
+            <span className="text-xs font-black uppercase tracking-widest text-gray-400 bg-gray-100 px-3 py-1 rounded-full">Final</span>
+          </div>
+          <div className="flex flex-col flex-1 justify-center">
+            <div className="border-2 border-purple-300 rounded-xl overflow-hidden shadow-sm">
+              <div className="bg-purple-600 px-3 py-1 text-xs font-black text-white text-center uppercase tracking-wide">🏆 Final Prevista</div>
+              <div className="px-3 py-3 bg-purple-50 space-y-2">
+                <div className="text-xs font-bold text-gray-800 leading-snug">{standings[0].team.player1} / {standings[0].team.player2}</div>
+                <div className="text-center text-xs font-black text-purple-200">vs</div>
+                <div className="text-xs font-bold text-gray-800 leading-snug">{standings[1].team.player1} / {standings[1].team.player2}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const groupLeaders = ev.groups.map(t => {
+    const teamsMap = {}
+    for (const m of t.matches) {
+      if (m.status !== 'finished') continue
+      if (m.teamA && !teamsMap[m.teamAId]) teamsMap[m.teamAId] = { team: m.teamA, wins: 0, losses: 0 }
+      if (m.teamB && !teamsMap[m.teamBId]) teamsMap[m.teamBId] = { team: m.teamB, wins: 0, losses: 0 }
+      if (m.winnerTeamId === m.teamAId) {
+        if (teamsMap[m.teamAId]) teamsMap[m.teamAId].wins++
+        if (m.teamBId && teamsMap[m.teamBId]) teamsMap[m.teamBId].losses++
+      }
+      if (m.winnerTeamId === m.teamBId) {
+        if (teamsMap[m.teamBId]) teamsMap[m.teamBId].wins++
+        if (m.teamAId && teamsMap[m.teamAId]) teamsMap[m.teamAId].losses++
+      }
+    }
+    const ranking = Object.values(teamsMap).sort((a, b) => b.wins - a.wins || a.losses - b.losses)
+    const allDone = t.matches.length > 0 && t.matches.every(m => m.status === 'finished')
+    return { group: t.group, leader: ranking[0]?.team || null, wins: ranking[0]?.wins ?? 0, allDone }
+  })
+
+  const pairs = []
+  for (let i = 0; i < groupLeaders.length; i += 2) {
+    pairs.push([groupLeaders[i], groupLeaders[i + 1] || null])
+  }
+
+  const r1Label = pairs.length === 1 ? 'Final' : pairs.length === 2 ? 'Semifinal' : 'Quartas de Final'
+  const showFinal = pairs.length > 1
+  const name = t => t ? `${t.player1} / ${t.player2}` : null
+
+  const GroupCard = ({ gl }) => (
+    <div className={`rounded-xl border-2 overflow-hidden ${gl.allDone ? 'border-green-300' : gl.leader ? 'border-purple-200' : 'border-dashed border-gray-200'}`}>
+      <div className={`px-3 py-1 text-xs font-black ${gl.allDone ? 'bg-green-500 text-white' : gl.leader ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400'}`}>
+        Grupo {gl.group} {gl.allDone ? '✓' : ''}
+      </div>
+      <div className="px-3 py-2 bg-white min-h-[52px] flex flex-col justify-center">
+        {gl.leader ? (
+          <>
+            <div className="text-xs font-bold text-gray-800 leading-snug">{gl.leader.player1}</div>
+            <div className="text-xs font-bold text-gray-800 leading-snug">{gl.leader.player2}</div>
+            <div className="text-xs text-green-600 font-semibold mt-0.5">{gl.wins}V</div>
+          </>
+        ) : (
+          <div className="text-xs text-gray-400 italic">Aguardando jogos...</div>
+        )}
+      </div>
+    </div>
+  )
+
+  const MatchupCard = ({ a, b }) => (
+    <div className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-gray-50 px-3 py-1 text-xs font-black text-gray-400 text-center uppercase tracking-wide">
+        {r1Label}
+      </div>
+      <div className="px-3 py-3 bg-white space-y-2">
+        <div className={`text-xs font-bold leading-snug ${a?.leader ? 'text-gray-800' : 'text-gray-400 italic'}`}>
+          {a?.leader ? name(a.leader) : a ? `→ Líder Grupo ${a.group}` : '?'}
+        </div>
+        <div className="text-center text-xs font-black text-gray-200">vs</div>
+        <div className={`text-xs font-bold leading-snug ${b?.leader ? 'text-gray-800' : 'text-gray-400 italic'}`}>
+          {b?.leader ? name(b.leader) : b ? `→ Líder Grupo ${b.group}` : '?'}
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="flex gap-6 h-full overflow-x-auto pb-2">
+      {/* Coluna: Líderes dos grupos */}
+      <div className="flex flex-col min-w-52">
+        <div className="text-center mb-3 shrink-0">
+          <span className="text-xs font-black uppercase tracking-widest text-gray-400 bg-gray-100 px-3 py-1 rounded-full">Grupos</span>
+        </div>
+        <div className="flex flex-col flex-1 gap-3" style={{ justifyContent: 'space-evenly' }}>
+          {groupLeaders.map(gl => <GroupCard key={gl.group} gl={gl} />)}
+        </div>
+      </div>
+
+      {/* Coluna: 1º round knockout (semis ou final direta) */}
+      <div className="flex flex-col min-w-52 flex-1">
+        <div className="text-center mb-3 shrink-0">
+          <span className="text-xs font-black uppercase tracking-widest text-gray-400 bg-gray-100 px-3 py-1 rounded-full">{r1Label}</span>
+        </div>
+        <div className="flex flex-col flex-1 gap-4" style={{ justifyContent: pairs.length === 1 ? 'center' : 'space-evenly' }}>
+          {pairs.map(([a, b], i) => <MatchupCard key={i} a={a} b={b} />)}
+        </div>
+      </div>
+
+      {/* Coluna: Final (somente quando há semis) */}
+      {showFinal && (
+        <div className="flex flex-col min-w-52 flex-1">
+          <div className="text-center mb-3 shrink-0">
+            <span className="text-xs font-black uppercase tracking-widest text-gray-400 bg-gray-100 px-3 py-1 rounded-full">Final</span>
+          </div>
+          <div className="flex flex-col flex-1 justify-center">
+            <div className="border-2 border-purple-300 rounded-xl overflow-hidden shadow-sm">
+              <div className="bg-purple-600 px-3 py-1 text-xs font-black text-white text-center uppercase tracking-wide">🏆 Final</div>
+              <div className="px-3 py-3 bg-purple-50 space-y-2">
+                {pairs[0] && (
+                  <div className="text-xs font-bold text-purple-400 italic leading-snug">
+                    Vencedor: Grupo {pairs[0][0]?.group} vs {pairs[0][1]?.group}
+                  </div>
+                )}
+                <div className="text-center text-xs font-black text-purple-200">vs</div>
+                {pairs[1] && (
+                  <div className="text-xs font-bold text-purple-400 italic leading-snug">
+                    Vencedor: Grupo {pairs[1][0]?.group} vs {pairs[1][1]?.group}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── EventModal ─────────────────────────────────────────────────────
 function EventModal({ ev, sMatches, courts, teams = [], onAction, onClose, onGenerateBracket }) {
   const sections = [
     ...ev.groups.map(t => ({ id: t.group, label: `Grupo ${t.group}`, tournament: t })),
     ...(ev.standalone ? [{ id: '__solo', label: ev.standalone.name, tournament: ev.standalone }] : []),
     ...(ev.bracket    ? [{ id: '__final', label: '🏆 Chave Final', tournament: ev.bracket }]    : []),
+    ...((ev.groups.length >= 1 || ev.standalone) ? [{ id: '__preview', label: '🔮 Prévia Final' }] : []),
   ]
   const [activeId, setActiveId] = useState(sections[0]?.id ?? null)
 
@@ -912,10 +1375,9 @@ function EventModal({ ev, sMatches, courts, teams = [], onAction, onClose, onGen
   let displayMatches = []
   if (sMatches) {
     displayMatches = sortM(sMatches)
-  } else if (activeSection) {
+  } else if (activeSection && activeSection.tournament) {
     const ms = activeSection.tournament.matches
     if (activeSection.id === '__final') {
-      // Group by round for bracket
       const byRound = groupByRound(ms)
       displayMatches = byRound.flatMap(({ matches }) => matches)
     } else {
@@ -924,12 +1386,13 @@ function EventModal({ ev, sMatches, courts, teams = [], onAction, onClose, onGen
   }
 
   const isBracket = activeSection?.id === '__final'
+  const isPreview = activeSection?.id === '__preview'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60"
       onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl flex flex-col transition-all duration-300"
-        style={{ width: isBracket ? '95vw' : '80vw', height: isBracket ? '95vh' : '80vh' }}
+        style={{ width: (isBracket || isPreview) ? '95vw' : '80vw', height: (isBracket || isPreview) ? '95vh' : '80vh' }}
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -982,8 +1445,10 @@ function EventModal({ ev, sMatches, courts, teams = [], onAction, onClose, onGen
         )}
 
         {/* Conteúdo */}
-        <div className={`flex-1 p-5 ${isBracket ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-          {isBracket ? (
+        <div className={`flex-1 p-5 ${(isBracket || isPreview) ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+          {isPreview ? (
+            <PreviewBracket ev={ev} />
+          ) : isBracket ? (
             <div className="flex gap-4 min-h-full overflow-x-auto">
               {groupByRound(activeSection.tournament.matches).map(({ round, matches: rMatches }) => (
                 <div key={round} className="flex-1 min-w-56 flex flex-col">
@@ -1007,7 +1472,7 @@ function EventModal({ ev, sMatches, courts, teams = [], onAction, onClose, onGen
             displayMatches.length === 0
               ? <p className="text-center text-gray-400 text-sm py-12">Nenhuma partida.</p>
               : (
-                <div className="grid grid-cols-2 gap-3 overflow-y-auto h-full content-start">
+                <div className="grid grid-cols-2 gap-3 content-start">
                   {displayMatches.map(m => (
                     <div key={m.id} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                       <ChavesMatchRow match={m} courts={courts} onAction={onAction} showContext={!!sMatches} card />
@@ -1032,6 +1497,7 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
   const [editTeamA, setEditTeamA] = useState(match.teamAId || '')
   const [editTeamB, setEditTeamB] = useState(match.teamBId || '')
   const [courtId, setCourtId]     = useState(match.courtId || '')
+  const [schedTime, setSchedTime] = useState(match.scheduledTime || '')
   useEffect(() => {
     setSA(String(match.scoreA))
     setSB(String(match.scoreB))
@@ -1040,7 +1506,8 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
     setEditTeamA(match.teamAId || '')
     setEditTeamB(match.teamBId || '')
     setCourtId(match.courtId || '')
-  }, [match.scoreA, match.scoreB, match.courtId, match.teamAId, match.teamBId])
+    setSchedTime(match.scheduledTime || '')
+  }, [match.scoreA, match.scoreB, match.courtId, match.teamAId, match.teamBId, match.scheduledTime])
 
   const handleCourtChange = (cid) => {
     setCourtId(cid)
@@ -1194,7 +1661,7 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
           </div>
         )}
 
-        {/* Quadra + botões de ação */}
+        {/* Quadra + horário + botões de ação */}
         <div className="flex items-center justify-center gap-2 px-3 pb-3 flex-wrap">
           <select
             value={courtId}
@@ -1210,6 +1677,19 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
             <option value="">{courts.length === 0 ? 'Sem quadras' : '🏖 Quadra...'}</option>
             {courts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          <input
+            type="text"
+            value={schedTime}
+            onChange={e => {
+              let v = e.target.value.replace(/[^0-9]/g, '')
+              if (v.length >= 3) v = v.slice(0, 2) + ':' + v.slice(2, 4)
+              setSchedTime(v)
+            }}
+            onBlur={() => onAction(match.id, 'set-time', { scheduledTime: schedTime })}
+            placeholder="00:00"
+            maxLength={5}
+            className="text-xs py-1 px-2 rounded-lg border border-gray-300 bg-white text-gray-600 outline-none focus:border-blue-400 w-16 text-center"
+          />
           {actionButtons}
         </div>
       </div>
@@ -1243,6 +1723,19 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
       ) : match.court ? (
         <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-1.5 py-0.5 rounded-lg border border-blue-200 shrink-0">{match.court.name}</span>
       ) : null}
+      <input
+        type="text"
+        value={schedTime}
+        onChange={e => {
+          let v = e.target.value.replace(/[^0-9]/g, '')
+          if (v.length >= 3) v = v.slice(0, 2) + ':' + v.slice(2, 4)
+          setSchedTime(v)
+        }}
+        onBlur={() => onAction(match.id, 'set-time', { scheduledTime: schedTime })}
+        placeholder="00:00"
+        maxLength={5}
+        className="text-xs py-0.5 px-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 outline-none focus:border-blue-400 w-16 text-center shrink-0"
+      />
       <span className={`flex-1 text-sm font-semibold min-w-0 text-right ${match.status === 'finished' ? winA ? 'text-green-700 font-black' : 'text-gray-500' : 'text-blue-700'}`}>
         {winA && '🏆 '}{nameA}
       </span>

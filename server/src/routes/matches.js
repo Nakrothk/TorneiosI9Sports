@@ -260,6 +260,19 @@ router.post('/:id/set-teams', async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── POST /matches/:id/set-time ─────────────────────────────────
+router.post('/:id/set-time', async (req, res, next) => {
+  try {
+    const { scheduledTime } = req.body
+    const updated = await prisma.match.update({
+      where: { id: req.params.id },
+      data:  { scheduledTime: scheduledTime || '' },
+      include,
+    })
+    res.json(updated)
+  } catch (err) { next(err) }
+})
+
 // ── PUT /matches/:id/position ──────────────────────────────────
 router.put('/:id/position', async (req, res, next) => {
   try {

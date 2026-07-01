@@ -69,7 +69,8 @@ model Match {
   prevScoreA   Int         @default(0)
   prevScoreB   Int         @default(0)
   status       String      @default("waiting")
-  isNext       Boolean     @default(false)
-  calledAt     DateTime?
-  createdAt    DateTime    @default(now())
+  isNext        Boolean     @default(false)
+  scheduledTime String      @default("")
+  calledAt      DateTime?
+  createdAt     DateTime    @default(now())
 }
