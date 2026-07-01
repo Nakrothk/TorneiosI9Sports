@@ -107,9 +107,9 @@ function printEvent(ev) {
     const rounds = groupByRound(ev.standalone.matches)
     const hasRounds = rounds.some(r => r.round)
     if (hasRounds) {
+      const maxCols = Math.min(rounds.length || 1, 2)
       return `<div class="bracket-wrap">
-        <div class="section-title">${esc(ev.standalone.name || ev.name)}</div>
-        <div class="groups" style="grid-template-columns:repeat(${rounds.length || 1},1fr)">
+        <div class="groups" style="grid-template-columns:repeat(${maxCols},1fr)">
           ${rounds.map(({ round, matches }) => `
             <div class="box">
               <div class="box-hd">${esc((ROUND_LABELS[round?.toLowerCase()] ?? round) || 'Partidas')}</div>
@@ -119,11 +119,15 @@ function printEvent(ev) {
       </div>`
     }
     const sorted = [...ev.standalone.matches].sort((a, b) => (a.position||0) - (b.position||0))
-    return `<div class="groups" style="grid-template-columns:1fr">
-      <div class="box">
-        <div class="box-hd">${esc(ev.standalone.name || ev.name)}</div>
-        <table>${sorted.map(matchRow).join('')}</table>
-      </div>
+    const cols = sorted.length > 8 ? 2 : 1
+    const chunkSize = Math.ceil(sorted.length / cols)
+    const chunks = Array.from({ length: cols }, (_, i) => sorted.slice(i * chunkSize, (i + 1) * chunkSize))
+    return `<div class="groups" style="grid-template-columns:repeat(${cols},1fr)">
+      ${chunks.map((chunk, i) => `
+        <div class="box">
+          <div class="box-hd">Partidas${cols > 1 ? ` (${i + 1}/${cols})` : ''}</div>
+          <table>${chunk.map(matchRow).join('')}</table>
+        </div>`).join('')}
     </div>`
   })() : ''
 
