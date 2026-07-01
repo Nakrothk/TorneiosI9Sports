@@ -179,33 +179,37 @@ function CallCard({ match, showCourt }) {
       {/* Fase */}
       {roundLabel && (
         <div className="bg-indigo-700 text-center py-4 px-6 shrink-0">
-          <p className="text-white text-2xl font-black tracking-[0.2em] uppercase">{roundLabel}</p>
+          <p className="text-white font-black tracking-[0.2em] uppercase" style={{ fontSize: 'clamp(1.4rem, 2.5vw, 2.2rem)' }}>{roundLabel}</p>
         </div>
       )}
 
       {/* Quadra (chamada) ou faixa PRÓXIMO */}
       {showCourt && courtName ? (
-        <div className="bg-yellow-400 text-slate-900 text-center py-6 px-6 shrink-0 flex items-center justify-center gap-6">
-          <p className="font-black uppercase tracking-[0.3em]" style={{ fontSize: 'clamp(2rem, 5vw, 6rem)' }}>{courtLabel}</p>
-          <p className="font-black leading-none" style={{ fontSize: 'clamp(2rem, 5vw, 6rem)' }}>{courtNumber ?? courtName}</p>
+        <div className="bg-yellow-400 text-slate-900 text-center py-5 px-6 shrink-0 flex items-center justify-center gap-6">
+          <p className="font-black uppercase tracking-[0.3em]" style={{ fontSize: 'clamp(1.8rem, 4.5vw, 5.5rem)' }}>{courtLabel}</p>
+          <p className="font-black leading-none" style={{ fontSize: 'clamp(1.8rem, 4.5vw, 5.5rem)' }}>{courtNumber ?? courtName}</p>
         </div>
       ) : !showCourt ? (
-        <div className="bg-emerald-600 text-white text-center py-6 px-6 shrink-0">
-          <p className="font-black tracking-[0.3em] uppercase" style={{ fontSize: 'clamp(2rem, 5vw, 6rem)' }}>Próxima Partida</p>
+        <div className="bg-emerald-600 text-white text-center py-5 px-6 shrink-0">
+          <p className="font-black tracking-[0.3em] uppercase" style={{ fontSize: 'clamp(1.6rem, 4vw, 5rem)' }}>Próxima Partida</p>
         </div>
       ) : null}
 
       {/* Duplas */}
-      <div className="bg-slate-900 text-white text-center flex flex-col items-center justify-center flex-1 min-h-0 px-10 gap-3 overflow-hidden">
-        <p className={`font-black leading-snug w-full ${COLOR_TEXT[match.teamA?.colorTeam] ?? 'text-sky-300'}`} style={{ fontSize: 'clamp(2.5rem, 6vw, 7rem)' }}>{nameA}</p>
-        <p className="font-black text-slate-500 tracking-widest shrink-0" style={{ fontSize: 'clamp(2rem, 4.5vw, 5rem)' }}>×</p>
-        <p className={`font-black leading-snug w-full ${COLOR_TEXT[match.teamB?.colorTeam] ?? 'text-rose-300'}`} style={{ fontSize: 'clamp(2.5rem, 6vw, 7rem)' }}>{nameB}</p>
+      <div className="bg-slate-900 text-white text-center flex flex-col items-center justify-center flex-1 min-h-0 px-10 gap-2 overflow-hidden">
+        <div className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden">
+          <p className={`font-black leading-tight w-full ${COLOR_TEXT[match.teamA?.colorTeam] ?? 'text-sky-300'}`} style={{ fontSize: 'clamp(1.8rem, 4.5vw, 5.5rem)' }}>{nameA}</p>
+        </div>
+        <p className="font-black text-slate-500 tracking-widest shrink-0" style={{ fontSize: 'clamp(1.5rem, 3.5vw, 4rem)' }}>×</p>
+        <div className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden">
+          <p className={`font-black leading-tight w-full ${COLOR_TEXT[match.teamB?.colorTeam] ?? 'text-rose-300'}`} style={{ fontSize: 'clamp(1.8rem, 4.5vw, 5.5rem)' }}>{nameB}</p>
+        </div>
       </div>
 
       {/* Categoria */}
       <div className="bg-slate-800 text-center py-5 px-6 shrink-0">
         {match.category ? (
-          <p className="text-slate-200 text-3xl font-bold tracking-wide">{match.category}</p>
+          <p className="text-slate-200 font-bold tracking-wide" style={{ fontSize: '2rem' }}>{match.category}</p>
         ) : (
           <p className="text-slate-600 text-xl font-medium italic">Sem categoria</p>
         )}
