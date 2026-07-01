@@ -44,6 +44,15 @@ function catTagStyle(cat) {
   if (l.startsWith('mist'))     return 'bg-amber-100 text-amber-700'
   return 'bg-purple-100 text-purple-700'
 }
+// Parses "Sáb 09:30" → { day: 'Sáb', time: '09:30' } or "09:30" → { day: '', time: '09:30' }
+function parseST(st) {
+  if (!st) return { day: '', time: '' }
+  const s = st.trim()
+  if (s.startsWith('Sáb ') || s.startsWith('Dom ')) return { day: s.slice(0, 3), time: s.slice(4) }
+  return { day: '', time: s }
+}
+function stDayOrder(st) { return st?.startsWith('Dom') ? 1 : 0 }
+
 const ROUND_ORDER  = ['oitavas', 'quartas', 'semi', 'final', 'terceiro lugar']
 const ROUND_LABELS = {
   oitavas:          'Oitavas de Final',
@@ -70,7 +79,8 @@ function printEvent(ev) {
     const wA = m.winnerTeamId && m.winnerTeamId === m.teamAId
     const wB = m.winnerTeamId && m.winnerTeamId === m.teamBId
     const score = m.status === 'finished' ? `${m.scoreA} × ${m.scoreB}` : `—`
-    const time = m.scheduledTime ? `<td class="tm">${esc(m.scheduledTime)}</td>` : ''
+    const { day: stDay, time: stTime } = parseST(m.scheduledTime)
+    const time = (stDay || stTime) ? `<td class="tm">${stDay ? `<span class="dy">${esc(stDay)}</span> ` : ''}${esc(stTime)}</td>` : ''
     return `<tr>
       ${time}
       <td class="ta ${wA ? 'win' : ''}">${wA ? '🏆 ' : ''}${nA}</td>
@@ -231,7 +241,8 @@ function printEvent(ev) {
     tr{border-bottom:1px solid #e5e7eb}
     tr:last-child{border-bottom:none}
     td{padding:5px 8px;font-size:10.5px}
-    .tm{text-align:center;font-weight:700;color:#6b7280;white-space:nowrap;padding:5px 6px;font-size:10px;width:38px}
+    .tm{text-align:center;font-weight:700;color:#6b7280;white-space:nowrap;padding:5px 6px;font-size:10px;width:44px}
+    .dy{color:#7c3aed;font-weight:900}
     .ta{text-align:right;color:#1d4ed8;max-width:140px}
     .tb{text-align:left;color:#dc2626;max-width:140px}
     .sc{text-align:center;font-weight:900;white-space:nowrap;padding:5px 12px;color:#374151}
@@ -274,7 +285,8 @@ function printAllMatches(matches) {
     const wA    = m.winnerTeamId && m.winnerTeamId === m.teamAId
     const wB    = m.winnerTeamId && m.winnerTeamId === m.teamBId
     const score = m.status === 'finished' ? `${m.scoreA} × ${m.scoreB}` : '—'
-    const time  = m.scheduledTime ? `<b>${esc(m.scheduledTime)}</b>` : '<span style="color:#ccc">—</span>'
+    const { day: stDay, time: stTime } = parseST(m.scheduledTime)
+    const time  = (stDay || stTime) ? `<b>${stDay ? `<span style="color:#7c3aed">${esc(stDay)}</span> ` : ''}${esc(stTime)}</b>` : '<span style="color:#ccc">—</span>'
     const round = ROUND_LABELS[m.round?.toLowerCase()] || m.round || ''
     const parts = [m._category, m._group ? `Gr.${m._group}` : '', round].filter(Boolean)
     const ctx   = esc(parts.join(' · '))
@@ -929,7 +941,9 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
     if (!a.scheduledTime && !b.scheduledTime) return (a.position || 0) - (b.position || 0)
     if (!a.scheduledTime) return 1
     if (!b.scheduledTime) return -1
-    return a.scheduledTime.localeCompare(b.scheduledTime)
+    const dA = stDayOrder(a.scheduledTime), dB = stDayOrder(b.scheduledTime)
+    if (dA !== dB) return dA - dB
+    return parseST(a.scheduledTime).time.localeCompare(parseST(b.scheduledTime).time)
   })
 
   const selectedEvent = selectedKey === '__standalone'
@@ -1000,7 +1014,15 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
                       </span>
                       {m._group && <span className="text-xs text-gray-400 font-semibold">Grupo {m._group}</span>}
                       {roundLabel && <span className="text-xs text-gray-400">{roundLabel}</span>}
-                      {m.scheduledTime && <span className="text-xs font-bold text-gray-500 ml-auto pr-1">{m.scheduledTime}</span>}
+                      {m.scheduledTime && (() => {
+                        const { day, time } = parseST(m.scheduledTime)
+                        return (
+                          <span className="text-xs font-bold text-gray-500 ml-auto pr-1 flex items-center gap-1">
+                            {day && <span className="text-purple-500 font-black">{day}</span>}
+                            {time}
+                          </span>
+                        )
+                      })()}
                     </div>
                     <ChavesMatchRow match={m} courts={courts} onAction={action} />
                   </div>
@@ -1570,7 +1592,8 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
   const [editTeamA, setEditTeamA] = useState(match.teamAId || '')
   const [editTeamB, setEditTeamB] = useState(match.teamBId || '')
   const [courtId, setCourtId]     = useState(match.courtId || '')
-  const [schedTime, setSchedTime] = useState(match.scheduledTime || '')
+  const [schedDay,  setSchedDay]  = useState(() => parseST(match.scheduledTime).day)
+  const [schedTime, setSchedTime] = useState(() => parseST(match.scheduledTime).time)
   useEffect(() => {
     setSA(String(match.scoreA))
     setSB(String(match.scoreB))
@@ -1579,7 +1602,9 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
     setEditTeamA(match.teamAId || '')
     setEditTeamB(match.teamBId || '')
     setCourtId(match.courtId || '')
-    setSchedTime(match.scheduledTime || '')
+    const p = parseST(match.scheduledTime)
+    setSchedDay(p.day)
+    setSchedTime(p.time)
   }, [match.scoreA, match.scoreB, match.courtId, match.teamAId, match.teamBId, match.scheduledTime])
 
   const handleCourtChange = (cid) => {
@@ -1750,19 +1775,28 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
             <option value="">{courts.length === 0 ? 'Sem quadras' : '🏖 Quadra...'}</option>
             {courts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <input
-            type="text"
-            value={schedTime}
-            onChange={e => {
-              let v = e.target.value.replace(/[^0-9]/g, '')
-              if (v.length >= 3) v = v.slice(0, 2) + ':' + v.slice(2, 4)
-              setSchedTime(v)
-            }}
-            onBlur={() => onAction(match.id, 'set-time', { scheduledTime: schedTime })}
-            placeholder="00:00"
-            maxLength={5}
-            className="text-xs py-1 px-2 rounded-lg border border-gray-300 bg-white text-gray-600 outline-none focus:border-blue-400 w-16 text-center"
-          />
+          <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden">
+            {['Sáb', 'Dom'].map(d => (
+              <button key={d} onClick={() => {
+                const nd = d === schedDay ? '' : d
+                setSchedDay(nd)
+                onAction(match.id, 'set-time', { scheduledTime: [nd, schedTime].filter(Boolean).join(' ') })
+              }} className={`text-xs px-1.5 py-1 font-bold border-r border-gray-300 transition-colors ${schedDay === d ? 'bg-indigo-600 text-white' : 'bg-white text-gray-400 hover:bg-gray-50'}`}>{d}</button>
+            ))}
+            <input
+              type="text"
+              value={schedTime}
+              onChange={e => {
+                let v = e.target.value.replace(/[^0-9]/g, '')
+                if (v.length >= 3) v = v.slice(0, 2) + ':' + v.slice(2, 4)
+                setSchedTime(v)
+              }}
+              onBlur={() => onAction(match.id, 'set-time', { scheduledTime: [schedDay, schedTime].filter(Boolean).join(' ') })}
+              placeholder="00:00"
+              maxLength={5}
+              className="text-xs py-1 px-2 bg-white text-gray-600 outline-none w-14 text-center"
+            />
+          </div>
           {actionButtons}
         </div>
       </div>
@@ -1796,19 +1830,28 @@ function ChavesMatchRow({ match, onAction, showContext, courts = [], card = fals
       ) : match.court ? (
         <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-1.5 py-0.5 rounded-lg border border-blue-200 shrink-0">{match.court.name}</span>
       ) : null}
-      <input
-        type="text"
-        value={schedTime}
-        onChange={e => {
-          let v = e.target.value.replace(/[^0-9]/g, '')
-          if (v.length >= 3) v = v.slice(0, 2) + ':' + v.slice(2, 4)
-          setSchedTime(v)
-        }}
-        onBlur={() => onAction(match.id, 'set-time', { scheduledTime: schedTime })}
-        placeholder="00:00"
-        maxLength={5}
-        className="text-xs py-0.5 px-1.5 rounded-lg border border-gray-200 bg-white text-gray-500 outline-none focus:border-blue-400 w-16 text-center shrink-0"
-      />
+      <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden shrink-0">
+        {['Sáb', 'Dom'].map(d => (
+          <button key={d} onClick={() => {
+            const nd = d === schedDay ? '' : d
+            setSchedDay(nd)
+            onAction(match.id, 'set-time', { scheduledTime: [nd, schedTime].filter(Boolean).join(' ') })
+          }} className={`text-xs px-1 py-0.5 font-bold border-r border-gray-200 transition-colors ${schedDay === d ? 'bg-indigo-600 text-white' : 'bg-white text-gray-400 hover:bg-gray-50'}`}>{d}</button>
+        ))}
+        <input
+          type="text"
+          value={schedTime}
+          onChange={e => {
+            let v = e.target.value.replace(/[^0-9]/g, '')
+            if (v.length >= 3) v = v.slice(0, 2) + ':' + v.slice(2, 4)
+            setSchedTime(v)
+          }}
+          onBlur={() => onAction(match.id, 'set-time', { scheduledTime: [schedDay, schedTime].filter(Boolean).join(' ') })}
+          placeholder="00:00"
+          maxLength={5}
+          className="text-xs py-0.5 px-1.5 bg-white text-gray-500 outline-none w-12 text-center"
+        />
+      </div>
       <span className={`flex-1 text-sm font-semibold min-w-0 text-right ${match.status === 'finished' ? winA ? 'text-green-700 font-black' : 'text-gray-500' : 'text-blue-700'}`}>
         {winA && '🏆 '}{nameA}
       </span>
