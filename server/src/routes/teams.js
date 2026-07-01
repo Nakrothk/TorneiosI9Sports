@@ -16,7 +16,11 @@ const TEAM_CATEGORIES = [
 function normalizeCategory(raw) {
   const s = String(raw ?? '').trim()
   const found = TEAM_CATEGORIES.find(c => c.toLowerCase() === s.toLowerCase())
-  return found ?? s
+  if (found) return found
+  // aceita "masculino/feminino" como sinônimo de "masculina/feminina"
+  const normalized = s.replace(/masculino/gi, 'Masculina').replace(/feminino/gi, 'Feminina')
+  const found2 = TEAM_CATEGORIES.find(c => c.toLowerCase() === normalized.toLowerCase())
+  return found2 ?? s
 }
 
 router.get('/', async (_req, res, next) => {
