@@ -70,7 +70,9 @@ function printEvent(ev) {
     const wA = m.winnerTeamId && m.winnerTeamId === m.teamAId
     const wB = m.winnerTeamId && m.winnerTeamId === m.teamBId
     const score = m.status === 'finished' ? `${m.scoreA} × ${m.scoreB}` : `—`
+    const time = m.scheduledTime ? `<td class="tm">${esc(m.scheduledTime)}</td>` : ''
     return `<tr>
+      ${time}
       <td class="ta ${wA ? 'win' : ''}">${wA ? '🏆 ' : ''}${nA}</td>
       <td class="sc ${m.status === 'finished' ? 'done' : ''}">${score}</td>
       <td class="tb ${wB ? 'win' : ''}">${wB ? '🏆 ' : ''}${nB}</td>
@@ -141,7 +143,7 @@ function printEvent(ev) {
     if (previewData.some(g => g.leader)) {
       previewHTML = `
         <div class="bracket-wrap">
-          <div class="section-title">🔮 Previsão Final</div>
+          <div class="section-title">Previsão Final</div>
           <div class="groups" style="grid-template-columns:1fr 1fr">
             <div class="box">
               <div class="box-hd">Líderes dos Grupos</div>
@@ -177,7 +179,7 @@ function printEvent(ev) {
       const tname = p => esc(`${p.team.player1} / ${p.team.player2}`)
       previewHTML = `
         <div class="bracket-wrap">
-          <div class="section-title">🔮 Previsão Final</div>
+          <div class="section-title">Previsão Final</div>
           <div class="groups" style="grid-template-columns:1fr 1fr">
             <div class="box">
               <div class="box-hd">Melhores Desempenhos</div>
@@ -229,6 +231,7 @@ function printEvent(ev) {
     tr{border-bottom:1px solid #e5e7eb}
     tr:last-child{border-bottom:none}
     td{padding:5px 8px;font-size:10.5px}
+    .tm{text-align:center;font-weight:700;color:#6b7280;white-space:nowrap;padding:5px 6px;font-size:10px;width:38px}
     .ta{text-align:right;color:#1d4ed8;max-width:140px}
     .tb{text-align:left;color:#dc2626;max-width:140px}
     .sc{text-align:center;font-weight:900;white-space:nowrap;padding:5px 12px;color:#374151}
@@ -245,6 +248,69 @@ function printEvent(ev) {
   ${standaloneHTML}
   ${previewHTML}
   ${bracketHTML2}
+  <script>window.onload=()=>{window.print()}<\/script>
+</body></html>`
+
+  const win = window.open('', '_blank')
+  win.document.write(html)
+  win.document.close()
+}
+
+function printAllMatches(matches) {
+  const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+
+  const catBorder = (cat) => {
+    if (!cat) return '#e5e7eb'
+    const l = cat.toLowerCase()
+    if (l.startsWith('masculin')) return '#93c5fd'
+    if (l.startsWith('feminin'))  return '#f9a8d4'
+    if (l.startsWith('mist'))     return '#fcd34d'
+    return '#c4b5fd'
+  }
+
+  const rows = matches.map(m => {
+    const nA    = m.teamA ? esc(`${m.teamA.player1} / ${m.teamA.player2}`) : 'A definir'
+    const nB    = m.teamB ? esc(`${m.teamB.player1} / ${m.teamB.player2}`) : 'A definir'
+    const wA    = m.winnerTeamId && m.winnerTeamId === m.teamAId
+    const wB    = m.winnerTeamId && m.winnerTeamId === m.teamBId
+    const score = m.status === 'finished' ? `${m.scoreA} × ${m.scoreB}` : '—'
+    const time  = m.scheduledTime ? `<b>${esc(m.scheduledTime)}</b>` : '<span style="color:#ccc">—</span>'
+    const round = ROUND_LABELS[m.round?.toLowerCase()] || m.round || ''
+    const parts = [m._category, m._group ? `Gr.${m._group}` : '', round].filter(Boolean)
+    const ctx   = esc(parts.join(' · '))
+    const bdr   = catBorder(m._category)
+    return `<tr>
+      <td class="tm" style="border-left:3px solid ${bdr}">${time}</td>
+      <td class="ctx">${ctx}</td>
+      <td class="ta ${wA ? 'win' : ''}">${wA ? '🏆 ' : ''}${nA}</td>
+      <td class="sc ${m.status === 'finished' ? 'done' : ''}">${score}</td>
+      <td class="tb ${wB ? 'win' : ''}">${wB ? '🏆 ' : ''}${nB}</td>
+    </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="utf-8">
+  <title>Todos os Jogos</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:16px}
+    h1{font-size:16px;font-weight:900;margin-bottom:12px}
+    table{width:100%;border-collapse:collapse}
+    tr{border-bottom:1px solid #e5e7eb}
+    tr:last-child{border-bottom:none}
+    td{padding:4px 7px;font-size:10.5px;vertical-align:middle}
+    .tm{text-align:center;white-space:nowrap;width:42px;padding-left:8px}
+    .ctx{font-size:9px;color:#6b7280;white-space:nowrap;max-width:110px}
+    .ta{text-align:right;color:#1d4ed8;max-width:150px}
+    .tb{text-align:left;color:#dc2626;max-width:150px}
+    .sc{text-align:center;font-weight:900;white-space:nowrap;padding:4px 10px;color:#374151}
+    .done{color:#111}
+    .win{font-weight:900}
+    @media print{@page{margin:1cm;size:A4}body{padding:0}}
+  </style>
+</head><body>
+  <h1>📋 Todos os Jogos</h1>
+  <table>${rows}</table>
   <script>window.onload=()=>{window.print()}<\/script>
 </body></html>`
 
@@ -882,15 +948,22 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
           <span className="font-semibold text-amber-600">{waiting} aguardando</span>
           <span className="text-gray-400">{finished} finalizadas</span>
           <span className="text-gray-300 text-xs">{everything.length} total</span>
-          <div className="ml-auto flex rounded-lg overflow-hidden border border-gray-200 text-xs font-bold">
-            <button onClick={() => setLayout('card')}
-              className={`px-3 py-1.5 transition-colors ${layout === 'card' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
-              ⊞ Card
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => printAllMatches(listMatches)}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors">
+              🖨 Imprimir tudo
             </button>
-            <button onClick={() => setLayout('lista')}
-              className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${layout === 'lista' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
-              ☰ Lista
-            </button>
+            <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs font-bold">
+              <button onClick={() => setLayout('card')}
+                className={`px-3 py-1.5 transition-colors ${layout === 'card' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                ⊞ Card
+              </button>
+              <button onClick={() => setLayout('lista')}
+                className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${layout === 'lista' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                ☰ Lista
+              </button>
+            </div>
           </div>
         </div>
         <input
