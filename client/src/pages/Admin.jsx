@@ -80,9 +80,9 @@ function printEvent(ev) {
     const wB = m.winnerTeamId && m.winnerTeamId === m.teamBId
     const score = m.status === 'finished' ? `${m.scoreA} × ${m.scoreB}` : `—`
     const { day: stDay, time: stTime } = parseST(m.scheduledTime)
-    const time = (stDay || stTime) ? `<td class="tm">${stDay ? `<span class="dy">${esc(stDay)}</span> ` : ''}${esc(stTime)}</td>` : ''
+    const timeContent = stDay || stTime ? `${stDay ? `<span class="dy">${esc(stDay)}</span> ` : ''}${esc(stTime)}` : ''
     return `<tr>
-      ${time}
+      <td class="tm">${timeContent}</td>
       <td class="ta ${wA ? 'win' : ''}">${wA ? '🏆 ' : ''}${nA}</td>
       <td class="sc ${m.status === 'finished' ? 'done' : ''}">${score}</td>
       <td class="tb ${wB ? 'win' : ''}">${wB ? '🏆 ' : ''}${nB}</td>
