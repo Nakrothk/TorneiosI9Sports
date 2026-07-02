@@ -244,6 +244,24 @@ router.post('/:id/edit', async (req, res, next) => {
       data:  { scoreA: fA, scoreB: fB, winnerTeamId, status: 'finished' },
       include,
     })
+
+    // ── Bracket progression ─────────────────────────────────────
+    if (current.nextMatchId) {
+      const oldWinner = current.winnerTeamId
+      const next = await prisma.match.findUnique({ where: { id: current.nextMatchId } })
+      if (next && next.status !== 'finished') {
+        if (oldWinner && oldWinner !== winnerTeamId) {
+          // Vencedor mudou: atualiza o slot que tinha o vencedor antigo
+          if      (next.teamAId === oldWinner) await prisma.match.update({ where: { id: next.id }, data: { teamAId: winnerTeamId || null } })
+          else if (next.teamBId === oldWinner) await prisma.match.update({ where: { id: next.id }, data: { teamBId: winnerTeamId || null } })
+        } else if (!oldWinner && winnerTeamId) {
+          // Vencedor determinado pela primeira vez via edit
+          if      (!next.teamAId) await prisma.match.update({ where: { id: next.id }, data: { teamAId: winnerTeamId } })
+          else if (!next.teamBId) await prisma.match.update({ where: { id: next.id }, data: { teamBId: winnerTeamId } })
+        }
+      }
+    }
+
     res.json(updated)
   } catch (err) { next(err) }
 })
