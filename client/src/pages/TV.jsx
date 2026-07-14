@@ -170,8 +170,8 @@ function CallCard({ match, showCourt }) {
   const courtLabel  = parts ? parts[1].trim() || 'Quadra' : courtName
   const courtNumber = parts ? parts[2] : null
 
-  const nameA = match.teamA ? `${match.teamA.player1} / ${match.teamA.player2}` : 'A definir'
-  const nameB = match.teamB ? `${match.teamB.player1} / ${match.teamB.player2}` : 'A definir'
+  const nameA = match.teamA ? `${match.teamA.player1} / ${match.teamA.player2}` : (match.teamAName || 'A definir')
+  const nameB = match.teamB ? `${match.teamB.player1} / ${match.teamB.player2}` : (match.teamBName || 'A definir')
 
   return (
     <div className="flex-1 flex flex-col min-h-0">

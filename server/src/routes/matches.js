@@ -59,21 +59,28 @@ router.get('/tv', async (_req, res, next) => {
 // ── POST /matches ───────────────────────────────────────────────
 router.post('/', async (req, res, next) => {
   try {
-    const { teamAId, teamBId, courtId, category, round, position } = req.body
-    if (!teamAId || !teamBId) {
-      return res.status(400).json({ error: 'teamAId e teamBId são obrigatórios' })
+    const { teamAId, teamBId, teamAName, teamBName, courtId, category, round, position, quickCall } = req.body
+    if (!teamAId && !teamAName) {
+      return res.status(400).json({ error: 'teamAId ou teamAName é obrigatório' })
     }
-    if (teamAId === teamBId) {
+    if (!teamBId && !teamBName) {
+      return res.status(400).json({ error: 'teamBId ou teamBName é obrigatório' })
+    }
+    if (teamAId && teamAId === teamBId) {
       return res.status(400).json({ error: 'Dupla A e Dupla B devem ser diferentes' })
     }
     const match = await prisma.match.create({
       data: {
-        teamAId, teamBId,
-        courtId:  courtId  || null,
-        category: category || '',
-        round:    round    || '',
-        position: position ? parseInt(position) : 0,
-        status:   'waiting',
+        teamAId:   teamAId   || null,
+        teamBId:   teamBId   || null,
+        teamAName: teamAName || '',
+        teamBName: teamBName || '',
+        courtId:   courtId  || null,
+        category:  category || '',
+        round:     round    || '',
+        position:  position ? parseInt(position) : 0,
+        status:    'waiting',
+        quickCall: !!quickCall,
       },
       include,
     })

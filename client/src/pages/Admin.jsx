@@ -389,8 +389,9 @@ export default function Admin() {
 
   const [courtName, setCourtName] = useState('')
   const [p1, setP1] = useState(''); const [p2, setP2] = useState(''); const [pCat, setPCat] = useState('')
-  const [mCourt, setMCourt] = useState(''); const [mTeamA, setMTeamA] = useState('')
-  const [mTeamB, setMTeamB] = useState(''); const [mCategory, setMCategory] = useState('')
+  const [mCourt, setMCourt] = useState('')
+  const [mTeamAName, setMTeamAName] = useState(''); const [mTeamBName, setMTeamBName] = useState('')
+  const [mCategory, setMCategory] = useState('')
   const [importFile,   setImportFile]   = useState(null)
   const [importing,    setImporting]    = useState(false)
   const [importResult, setImportResult] = useState(null)
@@ -425,10 +426,15 @@ export default function Admin() {
     e.preventDefault(); await api.post('/teams', { player1: p1, player2: p2, category: pCat })
     setP1(''); setP2(''); notify('Dupla criada!')
   })
-  const createMatch = withReload(async (e) => {
+  const chamarJogo = withReload(async (e) => {
     e.preventDefault()
-    await api.post('/matches', { teamAId: mTeamA, teamBId: mTeamB, courtId: mCourt || undefined, category: mCategory || undefined })
-    setMTeamA(''); setMTeamB(''); setMCourt(''); setMCategory(''); notify('Partida criada!')
+    const match = await api.post('/matches', {
+      teamAName: mTeamAName.trim(), teamBName: mTeamBName.trim(),
+      courtId: mCourt || undefined, category: mCategory || undefined,
+      quickCall: true,
+    })
+    await api.post(`/matches/${match.id}/call`)
+    setMTeamAName(''); setMTeamBName(''); setMCourt(''); setMCategory(''); notify('Chamada enviada para a TV!')
   })
   const matchAction = withReload(async (id, action, body) => {
     await api.post(`/matches/${id}/${action}`, body)
@@ -459,6 +465,7 @@ export default function Admin() {
     { id: 'copa',     label: 'Copa do Mundo' },
     { id: 'duplas',   label: 'Duplas' },
     { id: 'quadras',  label: 'Quadras' },
+    { id: 'chamar',   label: 'Chamada de Jogos' },
   ]
 
   return (
@@ -489,7 +496,7 @@ export default function Admin() {
       )}
 
       <div className="bg-white border-b shadow-sm">
-        <div className="max-w-6xl mx-auto px-6 flex gap-1">
+        <div className="max-w-6xl mx-auto px-6 flex flex-wrap justify-center gap-1">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`py-3 px-5 text-sm font-semibold border-b-2 transition-colors ${
@@ -545,6 +552,16 @@ export default function Admin() {
         {tab === 'quadras' && (
           <QuadrasTab courts={courts} courtName={courtName} setCourtName={setCourtName}
             onReload={load} notify={notify} createCourt={createCourt} />
+        )}
+
+        {/* ══ CHAMAR JOGOS ══════════════════════════════════════ */}
+        {tab === 'chamar' && (
+          <ChamarTab courts={courts} matches={matches}
+            mCourt={mCourt} setMCourt={setMCourt}
+            mTeamAName={mTeamAName} setMTeamAName={setMTeamAName}
+            mTeamBName={mTeamBName} setMTeamBName={setMTeamBName}
+            mCategory={mCategory} setMCategory={setMCategory}
+            chamarJogo={chamarJogo} />
         )}
       </main>
     </div>
@@ -789,6 +806,83 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
       ))}
       {confirmModal}
     </>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════
+// CHAMAR JOGOS TAB
+// ════════════════════════════════════════════════════════════════
+function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamAName, mTeamBName, setMTeamBName, mCategory, setMCategory, chamarJogo }) {
+  const canSubmit = mCourt && mTeamAName.trim() && mTeamBName.trim()
+
+  const history = matches
+    .filter(m => m.calledAt && m.quickCall)
+    .sort((a, b) => new Date(b.calledAt) - new Date(a.calledAt))
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-8 py-6">
+      <h2 className="text-3xl font-black text-center text-gray-800">Chamar Jogo para a TV</h2>
+
+      <form onSubmit={chamarJogo} className="bg-white rounded-2xl shadow-lg p-8 space-y-8">
+        <div>
+          <label className="block text-xl font-bold text-gray-700 mb-2">Quadra</label>
+          <select value={mCourt} onChange={e => setMCourt(e.target.value)}
+            disabled={courts.length === 0}
+            className="w-full text-2xl font-semibold py-4 px-4 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white disabled:bg-gray-100 disabled:text-gray-400">
+            <option value="">{courts.length === 0 ? 'Nenhuma quadra cadastrada' : 'Selecione a quadra...'}</option>
+            {courts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xl font-bold text-gray-700 mb-2">Dupla A</label>
+          <input type="text" value={mTeamAName} onChange={e => setMTeamAName(e.target.value)}
+            placeholder="Digite o nome da dupla A..."
+            className="w-full text-2xl font-semibold py-4 px-4 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white" />
+        </div>
+
+        <div>
+          <label className="block text-xl font-bold text-gray-700 mb-2">Dupla B</label>
+          <input type="text" value={mTeamBName} onChange={e => setMTeamBName(e.target.value)}
+            placeholder="Digite o nome da dupla B..."
+            className="w-full text-2xl font-semibold py-4 px-4 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white" />
+        </div>
+
+        <div>
+          <label className="block text-xl font-bold text-gray-700 mb-2">Categoria</label>
+          <select value={mCategory} onChange={e => setMCategory(e.target.value)}
+            className="w-full text-2xl font-semibold py-4 px-4 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white">
+            <option value="">Sem categoria</option>
+            {TEAM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        <button type="submit" disabled={!canSubmit}
+          className="w-full py-5 rounded-xl text-2xl font-black tracking-wide transition-colors bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white shadow-md">
+          CHAMAR
+        </button>
+      </form>
+
+      <div>
+        <h3 className="text-lg font-bold text-gray-700 mb-3">Histórico de chamadas</h3>
+        {history.length === 0 ? (
+          <Empty msg="Nenhuma chamada feita ainda." />
+        ) : (
+          <div className="bg-white rounded-2xl shadow divide-y">
+            {history.map(m => (
+              <div key={m.id} className="px-5 py-3">
+                <p className="font-semibold text-gray-800">
+                  {m.teamA ? `${m.teamA.player1}/${m.teamA.player2}` : (m.teamAName || '—')}
+                  <span className="text-gray-400 font-normal"> vs </span>
+                  {m.teamB ? `${m.teamB.player1}/${m.teamB.player2}` : (m.teamBName || '—')}
+                </p>
+                <p className="text-xs text-gray-400">{m.court?.name || 'Sem quadra'}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

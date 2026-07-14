@@ -52,6 +52,8 @@ model Match {
   teamBId      String?
   teamA        Team?       @relation("TeamA", fields: [teamAId], references: [id])
   teamB        Team?       @relation("TeamB", fields: [teamBId], references: [id])
+  teamAName    String      @default("")
+  teamBName    String      @default("")
   courtId      String?
   court        Court?      @relation(fields: [courtId], references: [id])
   category     String      @default("")
@@ -72,5 +74,6 @@ model Match {
   isNext        Boolean     @default(false)
   scheduledTime String      @default("")
   calledAt      DateTime?
+  quickCall     Boolean     @default(false)
   createdAt     DateTime    @default(now())
 }
