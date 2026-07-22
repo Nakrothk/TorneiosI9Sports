@@ -206,7 +206,7 @@ router.post('/:id/mark-next', async (req, res, next) => {
     const newValue = !match.isNext
     await prisma.match.updateMany({ data: { isNext: false } })
     if (newValue) {
-      await prisma.match.update({ where: { id: req.params.id }, data: { isNext: true } })
+      await prisma.match.update({ where: { id: req.params.id }, data: { isNext: true, calledAt: null } })
     }
 
     const updated = await prisma.match.findUnique({ where: { id: req.params.id }, include })
@@ -223,6 +223,21 @@ router.post('/:id/court', async (req, res, next) => {
     const updated = await prisma.match.update({
       where: { id: req.params.id },
       data:  { courtId: courtId || null },
+      include,
+    })
+    res.json(updated)
+  } catch (err) { next(err) }
+})
+
+// ── POST /matches/:id/category ──────────────────────────────────
+router.post('/:id/category', async (req, res, next) => {
+  try {
+    const { category } = req.body
+    const current = await prisma.match.findUnique({ where: { id: req.params.id } })
+    if (!current) return res.status(404).json({ error: 'Partida não encontrada' })
+    const updated = await prisma.match.update({
+      where: { id: req.params.id },
+      data:  { category: category || '' },
       include,
     })
     res.json(updated)

@@ -561,7 +561,7 @@ export default function Admin() {
             mTeamAName={mTeamAName} setMTeamAName={setMTeamAName}
             mTeamBName={mTeamBName} setMTeamBName={setMTeamBName}
             mCategory={mCategory} setMCategory={setMCategory}
-            chamarJogo={chamarJogo} />
+            chamarJogo={chamarJogo} onAction={matchAction} />
         )}
       </main>
     </div>
@@ -812,7 +812,7 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
 // ════════════════════════════════════════════════════════════════
 // CHAMAR JOGOS TAB
 // ════════════════════════════════════════════════════════════════
-function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamAName, mTeamBName, setMTeamBName, mCategory, setMCategory, chamarJogo }) {
+function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamAName, mTeamBName, setMTeamBName, mCategory, setMCategory, chamarJogo, onAction }) {
   const canSubmit = mCourt && mTeamAName.trim() && mTeamBName.trim()
 
   const history = matches
@@ -870,13 +870,39 @@ function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamANa
         ) : (
           <div className="bg-white rounded-2xl shadow divide-y">
             {history.map(m => (
-              <div key={m.id} className="px-5 py-3">
-                <p className="font-semibold text-gray-800">
-                  {m.teamA ? `${m.teamA.player1}/${m.teamA.player2}` : (m.teamAName || '—')}
-                  <span className="text-gray-400 font-normal"> vs </span>
-                  {m.teamB ? `${m.teamB.player1}/${m.teamB.player2}` : (m.teamBName || '—')}
-                </p>
-                <p className="text-xs text-gray-400">{m.court?.name || 'Sem quadra'}</p>
+              <div key={m.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-800 truncate">
+                    {m.teamA ? `${m.teamA.player1}/${m.teamA.player2}` : (m.teamAName || '—')}
+                    <span className="text-gray-400 font-normal"> vs </span>
+                    {m.teamB ? `${m.teamB.player1}/${m.teamB.player2}` : (m.teamBName || '—')}
+                  </p>
+                  {m.isNext && (
+                    <span className="text-xs font-black text-purple-600">📌 Marcada como próxima</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <select value={m.category || ''} onChange={e => onAction(m.id, 'category', { category: e.target.value || null })}
+                    className="text-xs font-semibold py-1.5 px-2 rounded-lg border border-gray-300 bg-white outline-none">
+                    <option value="">Sem categoria</option>
+                    {TEAM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select value={m.courtId || ''} onChange={e => onAction(m.id, 'court', { courtId: e.target.value || null })}
+                    className="text-xs font-semibold py-1.5 px-2 rounded-lg border border-gray-300 bg-white outline-none">
+                    <option value="">Sem quadra</option>
+                    {courts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <button onClick={() => onAction(m.id, 'mark-next')}
+                    title={m.isNext ? 'Desmarcar' : 'Colocar como próxima'}
+                    className={`px-2 py-1 text-xs font-semibold rounded-lg border transition-colors ${
+                      m.isNext ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-400 border-gray-200 hover:border-purple-400 hover:text-purple-600'
+                    }`}>📌</button>
+                  <button onClick={() => onAction(m.id, 'call')}
+                    title="Chamar de novo"
+                    className="px-2 py-1 text-xs font-semibold bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 active:scale-95">
+                    📢 Chamar
+                  </button>
+                </div>
               </div>
             ))}
           </div>
