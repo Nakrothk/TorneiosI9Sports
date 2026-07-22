@@ -132,7 +132,9 @@ export default function TV() {
 
   // Mostrar "próxima" quando não há partida chamada aguardando ir à quadra.
   // Se a partida chamada já está em andamento (playing), a próxima pode aparecer.
-  const calledIsWaiting = called?.status === 'waiting'
+  // Chamadas avulsas (quickCall) nunca saem de "waiting" (não têm Iniciar/Finalizar) —
+  // então, se uma foi marcada como próxima, ela tem prioridade e substitui a atual.
+  const calledIsWaiting = called?.status === 'waiting' && !(called?.quickCall && next)
   const showNext = next && !calledIsWaiting
 
   return (

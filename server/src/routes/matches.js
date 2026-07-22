@@ -41,18 +41,21 @@ router.get('/current', async (_req, res, next) => {
 
 // ── GET /matches/tv ─────────────────────────────────────────────
 // Returns { called, next } for the TV display.
-// "called" only includes non-finished matches so finished games don't block the next display.
+// "called" é sempre a última chamada (por calledAt), não a última não-finalizada —
+// senão, ao finalizar a chamada mais recente, a tela voltava a mostrar uma chamada
+// antiga (ex: uma chamada avulsa que nunca é finalizada) em vez de limpar a tela.
 router.get('/tv', async (_req, res, next) => {
   try {
-    const [called, next] = await Promise.all([
+    const [lastCalled, nextMatch] = await Promise.all([
       prisma.match.findFirst({
-        where:   { calledAt: { not: null }, status: { not: 'finished' } },
+        where:   { calledAt: { not: null } },
         orderBy: { calledAt: 'desc' },
         include,
       }),
       prisma.match.findFirst({ where: { isNext: true, calledAt: null }, include }),
     ])
-    res.json({ called: called ?? null, next: next ?? null })
+    const called = lastCalled && lastCalled.status !== 'finished' ? lastCalled : null
+    res.json({ called, next: nextMatch ?? null })
   } catch (err) { next(err) }
 })
 
