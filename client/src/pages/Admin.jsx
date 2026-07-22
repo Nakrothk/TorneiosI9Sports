@@ -828,8 +828,8 @@ function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamANa
   }
 
   const history = matches
-    .filter(m => m.calledAt && m.quickCall)
-    .sort((a, b) => new Date(b.calledAt) - new Date(a.calledAt))
+    .filter(m => m.quickCall)
+    .sort((a, b) => new Date(b.calledAt || b.createdAt) - new Date(a.calledAt || a.createdAt))
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 py-6">
