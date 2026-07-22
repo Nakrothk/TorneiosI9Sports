@@ -327,4 +327,12 @@ router.put('/:id/position', async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── DELETE /matches/:id ──────────────────────────────────────────
+router.delete('/:id', async (req, res, next) => {
+  try {
+    await prisma.match.delete({ where: { id: req.params.id } })
+    res.json({ ok: true })
+  } catch (err) { next(err) }
+})
+
 module.exports = router

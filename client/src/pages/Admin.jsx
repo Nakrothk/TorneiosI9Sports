@@ -440,6 +440,10 @@ export default function Admin() {
     await api.post(`/matches/${id}/${action}`, body)
     if (action === 'call') notify('📢 Chamada enviada para a TV!')
   })
+  const deleteMatch = withReload(async (id) => {
+    await api.delete(`/matches/${id}`)
+    notify('Chamada excluída.')
+  })
 
   const handleImport = async () => {
     if (!importFile) return notify('Selecione um arquivo .xlsx', 'err')
@@ -561,7 +565,7 @@ export default function Admin() {
             mTeamAName={mTeamAName} setMTeamAName={setMTeamAName}
             mTeamBName={mTeamBName} setMTeamBName={setMTeamBName}
             mCategory={mCategory} setMCategory={setMCategory}
-            chamarJogo={chamarJogo} onAction={matchAction} />
+            chamarJogo={chamarJogo} onAction={matchAction} onDelete={deleteMatch} />
         )}
       </main>
     </div>
@@ -812,8 +816,16 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
 // ════════════════════════════════════════════════════════════════
 // CHAMAR JOGOS TAB
 // ════════════════════════════════════════════════════════════════
-function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamAName, mTeamBName, setMTeamBName, mCategory, setMCategory, chamarJogo, onAction }) {
+function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamAName, mTeamBName, setMTeamBName, mCategory, setMCategory, chamarJogo, onAction, onDelete }) {
   const canSubmit = mCourt && mTeamAName.trim() && mTeamBName.trim()
+  const { confirm, modal: confirmModal } = useConfirm()
+
+  const handleDelete = async (m) => {
+    const nameA = m.teamA ? `${m.teamA.player1}/${m.teamA.player2}` : (m.teamAName || '—')
+    const nameB = m.teamB ? `${m.teamB.player1}/${m.teamB.player2}` : (m.teamBName || '—')
+    if (!await confirm(`Excluir a chamada "${nameA} vs ${nameB}" do histórico?`)) return
+    onDelete(m.id)
+  }
 
   const history = matches
     .filter(m => m.calledAt && m.quickCall)
@@ -902,12 +914,18 @@ function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamANa
                     className="px-2 py-1 text-xs font-semibold bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 active:scale-95">
                     📢 Chamar
                   </button>
+                  <button onClick={() => handleDelete(m)}
+                    title="Excluir do histórico"
+                    className="px-2 py-1 text-xs font-semibold bg-red-100 text-red-600 rounded-lg hover:bg-red-200 active:scale-95">
+                    🗑
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+      {confirmModal}
     </div>
   )
 }
