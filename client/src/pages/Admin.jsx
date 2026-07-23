@@ -816,6 +816,14 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
 // ════════════════════════════════════════════════════════════════
 // CHAMAR JOGOS TAB
 // ════════════════════════════════════════════════════════════════
+function historyNameClass(text) {
+  const len = text?.length ?? 0
+  if (len > 60) return 'text-[0.65rem]'
+  if (len > 45) return 'text-xs'
+  if (len > 32) return 'text-sm'
+  return 'text-base'
+}
+
 function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamAName, mTeamBName, setMTeamBName, mCategory, setMCategory, chamarJogo, onAction, onDelete }) {
   const canSubmit = mCourt && mTeamAName.trim() && mTeamBName.trim()
   const { confirm, modal: confirmModal } = useConfirm()
@@ -832,10 +840,10 @@ function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamANa
     .sort((a, b) => new Date(b.calledAt || b.createdAt) - new Date(a.calledAt || a.createdAt))
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8 py-6">
+    <div className="max-w-5xl mx-auto space-y-8 py-6">
       <h2 className="text-3xl font-black text-center text-gray-800">Chamar Jogo para a TV</h2>
 
-      <form onSubmit={chamarJogo} className="bg-white rounded-2xl shadow-lg p-8 space-y-8">
+      <form onSubmit={chamarJogo} className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg p-8 space-y-8">
         <div>
           <label className="block text-xl font-bold text-gray-700 mb-2">Quadra</label>
           <select value={mCourt} onChange={e => setMCourt(e.target.value)}
@@ -881,13 +889,17 @@ function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamANa
           <Empty msg="Nenhuma chamada feita ainda." />
         ) : (
           <div className="bg-white rounded-2xl shadow divide-y">
-            {history.map(m => (
-              <div key={m.id} className="px-5 py-3 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-800 truncate">
-                    {m.teamA ? `${m.teamA.player1}/${m.teamA.player2}` : (m.teamAName || '—')}
+            {history.map(m => {
+              const nameA = m.teamA ? `${m.teamA.player1}/${m.teamA.player2}` : (m.teamAName || '—')
+              const nameB = m.teamB ? `${m.teamB.player1}/${m.teamB.player2}` : (m.teamBName || '—')
+              const fullName = `${nameA} vs ${nameB}`
+              return (
+              <div key={m.id} className="px-5 py-3 flex items-center gap-3">
+                <div className="min-w-0 flex-1 overflow-x-auto">
+                  <p className={`font-semibold text-gray-800 whitespace-nowrap ${historyNameClass(fullName)}`}>
+                    {nameA}
                     <span className="text-gray-400 font-normal"> vs </span>
-                    {m.teamB ? `${m.teamB.player1}/${m.teamB.player2}` : (m.teamBName || '—')}
+                    {nameB}
                   </p>
                   {m.isNext && (
                     <span className="text-xs font-black text-purple-600">📌 Marcada como próxima</span>
@@ -921,7 +933,8 @@ function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamANa
                   </button>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
