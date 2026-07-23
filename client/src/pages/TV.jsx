@@ -163,6 +163,16 @@ function Standby({ label }) {
   )
 }
 
+/* ─── Tamanho de fonte adaptativo para nomes longos ───────────── */
+function nameFontSize(name) {
+  const len = name?.length ?? 0
+  if (len > 50) return 'clamp(1.1rem, 2.2vw, 2.4rem)'
+  if (len > 40) return 'clamp(1.2rem, 2.6vw, 2.9rem)'
+  if (len > 30) return 'clamp(1.4rem, 3.2vw, 3.6rem)'
+  if (len > 22) return 'clamp(1.6rem, 3.8vw, 4.5rem)'
+  return 'clamp(1.8rem, 4.5vw, 5.5rem)'
+}
+
 /* ─── Card de chamada ─────────────────────────────────────────── */
 function CallCard({ match, showCourt }) {
   const courtName  = match.court?.name ?? null
@@ -200,11 +210,11 @@ function CallCard({ match, showCourt }) {
       {/* Duplas */}
       <div className="bg-slate-900 text-white text-center flex flex-col items-center justify-center flex-1 min-h-0 px-10 gap-2 overflow-hidden">
         <div className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden">
-          <p className={`font-black leading-tight w-full ${COLOR_TEXT[match.teamA?.colorTeam] ?? 'text-sky-300'}`} style={{ fontSize: 'clamp(1.8rem, 4.5vw, 5.5rem)' }}>{nameA}</p>
+          <p className={`font-black leading-tight w-full break-words ${COLOR_TEXT[match.teamA?.colorTeam] ?? 'text-sky-300'}`} style={{ fontSize: nameFontSize(nameA) }}>{nameA}</p>
         </div>
         <p className="font-black text-slate-500 tracking-widest shrink-0" style={{ fontSize: 'clamp(1.5rem, 3.5vw, 4rem)' }}>×</p>
         <div className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden">
-          <p className={`font-black leading-tight w-full ${COLOR_TEXT[match.teamB?.colorTeam] ?? 'text-rose-300'}`} style={{ fontSize: 'clamp(1.8rem, 4.5vw, 5.5rem)' }}>{nameB}</p>
+          <p className={`font-black leading-tight w-full break-words ${COLOR_TEXT[match.teamB?.colorTeam] ?? 'text-rose-300'}`} style={{ fontSize: nameFontSize(nameB) }}>{nameB}</p>
         </div>
       </div>
 
