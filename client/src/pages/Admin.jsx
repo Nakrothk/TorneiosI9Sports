@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import { api, API_BASE } from '../api'
 
 const API_URL = API_BASE
@@ -10,14 +10,82 @@ function authFetch(url, options = {}) {
   return fetch(url, { ...options, headers })
 }
 
-// ── constants ────────────────────────────────────────────────────
-const TEAM_CATEGORIES = [
+// ── categorias ───────────────────────────────────────────────────
+// Lista padrão + categorias criadas pelo usuário (persistidas no navegador).
+const DEFAULT_CATEGORIES = [
   'Masculina A', 'Masculina B', 'Masculina C', 'Masculina D', 'Masculina E',
   'Feminina A',  'Feminina B',  'Feminina C',  'Feminina D',  'Feminina E',
   'Mista A',     'Mista B',     'Mista C',     'Mista D',     'Mista E',
   'MÃE + MÃE', 'MÃES + FILHOS(AS)', 'MÃE E FILHOS', 'MÃES + FILHAS',
 ]
-const CATEGORIES = TEAM_CATEGORIES
+const CUSTOM_CATEGORIES_KEY = 'custom_categories'
+
+function readCustomCategories() {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_CATEGORIES_KEY) || '[]') }
+  catch { return [] }
+}
+
+let categoriesState = [...DEFAULT_CATEGORIES, ...readCustomCategories().filter(c => !DEFAULT_CATEGORIES.includes(c))]
+const categoryListeners = new Set()
+
+function addCategory(name) {
+  const cat = (name || '').trim()
+  if (!cat) return null
+  if (!categoriesState.includes(cat)) {
+    const custom = readCustomCategories()
+    custom.push(cat)
+    localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(custom))
+    categoriesState = [...categoriesState, cat]
+    categoryListeners.forEach(fn => fn())
+  }
+  return cat
+}
+
+function useCategories() {
+  return useSyncExternalStore(
+    (onChange) => { categoryListeners.add(onChange); return () => categoryListeners.delete(onChange) },
+    () => categoriesState,
+  )
+}
+
+// Seletor de categoria com opção de criar uma nova na hora.
+function CategorySelect({ value, onChange, categories, required = false, className = 'input w-full', placeholder = 'Selecionar...' }) {
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  const confirmAdd = () => {
+    const cat = addCategory(draft)
+    if (cat) onChange(cat)
+    setDraft(''); setAdding(false)
+  }
+  const cancelAdd = () => { setDraft(''); setAdding(false) }
+
+  if (adding) {
+    return (
+      <div className="flex gap-1">
+        <input autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); confirmAdd() }
+            if (e.key === 'Escape') { e.preventDefault(); cancelAdd() }
+          }}
+          placeholder="Nome da nova categoria" className={className} />
+        <button type="button" onClick={confirmAdd} title="Confirmar"
+          className="px-2 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">✓</button>
+        <button type="button" onClick={cancelAdd} title="Cancelar"
+          className="px-2 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">✕</button>
+      </div>
+    )
+  }
+
+  return (
+    <select value={value} required={required} className={className}
+      onChange={e => { if (e.target.value === '__new__') setAdding(true); else onChange(e.target.value) }}>
+      <option value="">{placeholder}</option>
+      {categories.map(c => <option key={c} value={c}>{c}</option>)}
+      <option value="__new__">+ Nova categoria...</option>
+    </select>
+  )
+}
 
 function teamCatStyle(cat) {
   if (!cat) return 'bg-gray-100 text-gray-500'
@@ -584,8 +652,11 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
   const [filterCat,   setFilterCat]  = useState('')
   const [filterColor, setFilterColor] = useState('')
   const [importing,   setImporting]  = useState(false)
+  const [addingEditCat, setAddingEditCat] = useState(false)
+  const [editCatDraft,  setEditCatDraft]  = useState('')
   const importRef = useRef(null)
   const { confirm, modal: confirmModal } = useConfirm()
+  const categories = useCategories()
 
   const handleExport = async () => {
     try {
@@ -616,8 +687,11 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
     finally { setImporting(false); if (importRef.current) importRef.current.value = '' }
   }
 
-  const startEdit = (t) => { setEditingId(t.id); setEditP1(t.player1); setEditP2(t.player2); setEditCat(t.category || ''); setEditColor(t.colorTeam || '') }
-  const cancelEdit = () => setEditingId(null)
+  const startEdit = (t) => {
+    setEditingId(t.id); setEditP1(t.player1); setEditP2(t.player2); setEditCat(t.category || ''); setEditColor(t.colorTeam || '')
+    setAddingEditCat(false); setEditCatDraft('')
+  }
+  const cancelEdit = () => { setEditingId(null); setAddingEditCat(false); setEditCatDraft('') }
 
   const saveEdit = async (id) => {
     if (!editP1.trim() || !editP2.trim() || !editCat) return notify('Preencha todos os campos', 'err')
@@ -642,10 +716,10 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
   )
 
   // Group teams by category for display
-  const grouped = TEAM_CATEGORIES
+  const grouped = categories
     .map(cat => ({ cat, list: filtered.filter(t => t.category === cat) }))
     .filter(g => g.list.length > 0)
-  const uncategorized = filtered.filter(t => !t.category || !TEAM_CATEGORIES.includes(t.category))
+  const uncategorized = filtered.filter(t => !t.category || !categories.includes(t.category))
 
   return (
     <>
@@ -653,10 +727,7 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
         <form onSubmit={createTeam} className="flex flex-wrap gap-3 items-end">
           <div className="w-44">
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Categoria *</label>
-            <select value={pCat} onChange={e => setPCat(e.target.value)} required className="input w-full">
-              <option value="">Selecionar...</option>
-              {TEAM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <CategorySelect value={pCat} onChange={setPCat} categories={categories} required />
           </div>
           <div className="flex-1 min-w-32">
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Jogador 1</label>
@@ -727,7 +798,7 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
               className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
                 !filterCat ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-500 hover:border-gray-400'
               }`}>Todas ({teams.length})</button>
-            {TEAM_CATEGORIES.filter(c => teams.some(t => t.category === c)).map(c => (
+            {categories.filter(c => teams.some(t => t.category === c)).map(c => (
               <button key={c} onClick={() => setFilterCat(filterCat === c ? '' : c)}
                 className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${
                   filterCat === c ? `${teamCatStyle(c)} border-current` : 'border-gray-200 text-gray-500 hover:border-gray-400'
@@ -752,14 +823,34 @@ function DuplasTab({ teams, p1, p2, pCat, setP1, setP2, setPCat, onReload, notif
               <div key={t.id} className="border rounded-xl p-3 text-sm bg-white">
                 {editingId === t.id ? (
                   <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1">
-                      {TEAM_CATEGORIES.map(c => (
-                        <button key={c} type="button" onClick={() => setEditCat(c)}
-                          className={`px-2 py-0.5 text-xs font-bold rounded-full border transition-colors ${
-                            editCat === c ? `${teamCatStyle(c)} border-current` : 'border-gray-200 text-gray-400'
-                          }`}>{c}</button>
-                      ))}
-                    </div>
+                    {addingEditCat ? (
+                      <div className="flex gap-1">
+                        <input autoFocus value={editCatDraft} onChange={e => setEditCatDraft(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); const c = addCategory(editCatDraft); if (c) setEditCat(c); setAddingEditCat(false); setEditCatDraft('') }
+                            if (e.key === 'Escape') { e.preventDefault(); setAddingEditCat(false); setEditCatDraft('') }
+                          }}
+                          placeholder="Nome da nova categoria" className="input w-full text-xs py-1" />
+                        <button type="button" title="Confirmar"
+                          onClick={() => { const c = addCategory(editCatDraft); if (c) setEditCat(c); setAddingEditCat(false); setEditCatDraft('') }}
+                          className="px-2 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">✓</button>
+                        <button type="button" title="Cancelar" onClick={() => { setAddingEditCat(false); setEditCatDraft('') }}
+                          className="px-2 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">✕</button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {categories.map(c => (
+                          <button key={c} type="button" onClick={() => setEditCat(c)}
+                            className={`px-2 py-0.5 text-xs font-bold rounded-full border transition-colors ${
+                              editCat === c ? `${teamCatStyle(c)} border-current` : 'border-gray-200 text-gray-400'
+                            }`}>{c}</button>
+                        ))}
+                        <button type="button" onClick={() => setAddingEditCat(true)}
+                          className="px-2 py-0.5 text-xs font-bold rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition-colors">
+                          + Nova
+                        </button>
+                      </div>
+                    )}
                     <input value={editP1} onChange={e => setEditP1(e.target.value)} className="input w-full text-xs py-1" placeholder="Jogador 1" />
                     <input value={editP2} onChange={e => setEditP2(e.target.value)} className="input w-full text-xs py-1" placeholder="Jogador 2" />
                     {/* Seletor de time (opcional) */}
@@ -827,6 +918,7 @@ function historyNameClass(text) {
 function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamAName, mTeamBName, setMTeamBName, mCategory, setMCategory, chamarJogo, onAction, onDelete }) {
   const canSubmit = mCourt && mTeamAName.trim() && mTeamBName.trim()
   const { confirm, modal: confirmModal } = useConfirm()
+  const categories = useCategories()
 
   const handleDelete = async (m) => {
     const nameA = m.teamA ? `${m.teamA.player1}/${m.teamA.player2}` : (m.teamAName || '—')
@@ -870,11 +962,8 @@ function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamANa
 
         <div>
           <label className="block text-xl font-bold text-gray-700 mb-2">Categoria</label>
-          <select value={mCategory} onChange={e => setMCategory(e.target.value)}
-            className="w-full text-2xl font-semibold py-4 px-4 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white">
-            <option value="">Sem categoria</option>
-            {TEAM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <CategorySelect value={mCategory} onChange={setMCategory} categories={categories} placeholder="Sem categoria"
+            className="w-full text-2xl font-semibold py-4 px-4 rounded-xl border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none bg-white" />
         </div>
 
         <button type="submit" disabled={!canSubmit}
@@ -906,11 +995,9 @@ function ChamarTab({ courts, matches, mCourt, setMCourt, mTeamAName, setMTeamANa
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <select value={m.category || ''} onChange={e => onAction(m.id, 'category', { category: e.target.value || null })}
-                    className="text-xs font-semibold py-1.5 px-2 rounded-lg border border-gray-300 bg-white outline-none">
-                    <option value="">Sem categoria</option>
-                    {TEAM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <CategorySelect value={m.category || ''} onChange={c => onAction(m.id, 'category', { category: c || null })}
+                    categories={categories} placeholder="Sem categoria"
+                    className="text-xs font-semibold py-1.5 px-2 rounded-lg border border-gray-300 bg-white outline-none" />
                   <select value={m.courtId || ''} onChange={e => onAction(m.id, 'court', { courtId: e.target.value || null })}
                     className="text-xs font-semibold py-1.5 px-2 rounded-lg border border-gray-300 bg-white outline-none">
                     <option value="">Sem quadra</option>
@@ -2067,6 +2154,7 @@ function FilterBtn({ active, onClick, children, variant = 'blue' }) {
 // TORNEIOS TAB
 // ════════════════════════════════════════════════════════════════
 function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
+  const categories = useCategories()
   const [evName,     setEvName]     = useState('')
   const [evCategory, setEvCategory] = useState('')
   const [evGroups,   setEvGroups]   = useState(4)
@@ -2128,10 +2216,7 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
             </div>
             <div className="w-44">
               <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide block mb-1">Categoria</label>
-              <select value={evCategory} onChange={e => setEvCategory(e.target.value)} required className="input w-full">
-                <option value="">Selecionar...</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <CategorySelect value={evCategory} onChange={setEvCategory} categories={categories} required />
             </div>
           </div>
           <div>
@@ -2169,10 +2254,7 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
             </div>
             <div className="w-44">
               <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide block mb-1">Categoria</label>
-              <select value={category} onChange={e => setCategory(e.target.value)} className="input w-full">
-                <option value="">Selecionar...</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <CategorySelect value={category} onChange={setCategory} categories={categories} />
             </div>
             <div>
               <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide block mb-1">Grupo (opcional)</label>
