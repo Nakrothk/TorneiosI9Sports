@@ -11,6 +11,7 @@ const courtsRouter      = require('./routes/courts')
 const matchesRouter     = require('./routes/matches')
 const importRouter      = require('./routes/import')
 const tournamentsRouter = require('./routes/tournaments')
+const tournamentFoldersRouter = require('./routes/tournamentFolders')
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -27,6 +28,7 @@ app.use('/courts',      courtsRouter)
 app.use('/matches',     matchesRouter)
 app.use('/import',      importRouter)
 app.use('/tournaments', tournamentsRouter)
+app.use('/tournament-folders', tournamentFoldersRouter)
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }))
 

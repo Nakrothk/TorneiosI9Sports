@@ -10,6 +10,21 @@ function authFetch(url, options = {}) {
   return fetch(url, { ...options, headers })
 }
 
+const HIDDEN_TABS_KEY = 'hidden_tabs'
+function readHiddenTabs() {
+  try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_TABS_KEY) || '[]')) }
+  catch { return new Set() }
+}
+
+const TABS = [
+  { id: 'chaves',   label: 'Chaves' },
+  { id: 'torneios', label: 'Torneios' },
+  { id: 'copa',     label: 'Copa do Mundo' },
+  { id: 'duplas',   label: 'Duplas' },
+  { id: 'quadras',  label: 'Quadras' },
+  { id: 'chamar',   label: 'Chamada de Jogos' },
+]
+
 // ── categorias ───────────────────────────────────────────────────
 // Lista padrão + categorias criadas pelo usuário (persistidas no navegador).
 const DEFAULT_CATEGORIES = [
@@ -134,6 +149,13 @@ const STATUS_STYLE = {
   playing:  { label: 'Em Jogo',    bg: 'bg-green-100 text-green-800',   border: 'border-l-green-500'  },
   finished: { label: 'Finalizada', bg: 'bg-gray-100 text-gray-500',     border: 'border-l-gray-300'   },
 }
+const STATUS_FILTER_OPTIONS = [
+  { id: 'playing',  label: 'Em andamento', variant: 'green'  },
+  { id: 'waiting',  label: 'Aguardando',   variant: 'yellow' },
+  { id: 'finished', label: 'Finalizados',  variant: 'gray'   },
+]
+const eventStatusOf = (inPlay, done, total) =>
+  inPlay > 0 ? 'playing' : (total > 0 && done === total) ? 'finished' : 'waiting'
 
 // ── helpers ──────────────────────────────────────────────────────
 const teamName = (t) => t ? `${t.player1} / ${t.player2}` : 'A definir'
@@ -141,7 +163,9 @@ const teamName = (t) => t ? `${t.player1} / ${t.player2}` : 'A definir'
 function printEvent(ev) {
   const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 
-  const matchRow = (m) => {
+  const roundLabel = (r) => r ? (ROUND_LABELS[r.toLowerCase()] || r) : ''
+
+  const matchRow = (m, showRound = false) => {
     const nA = m.teamA ? esc(`${m.teamA.player1} / ${m.teamA.player2}`) : 'A definir'
     const nB = m.teamB ? esc(`${m.teamB.player1} / ${m.teamB.player2}`) : 'A definir'
     const wA = m.winnerTeamId && m.winnerTeamId === m.teamAId
@@ -149,7 +173,9 @@ function printEvent(ev) {
     const score = m.status === 'finished' ? `${m.scoreA} × ${m.scoreB}` : `—`
     const { day: stDay, time: stTime } = parseST(m.scheduledTime)
     const timeContent = stDay || stTime ? `${stDay ? `<span class="dy">${esc(stDay)}</span> ` : ''}${esc(stTime)}` : ''
+    const rdCell = showRound ? `<td class="rd">${esc(roundLabel(m.round))}</td>` : ''
     return `<tr>
+      ${rdCell}
       <td class="tm">${timeContent}</td>
       <td class="ta ${wA ? 'win' : ''}">${wA ? '🏆 ' : ''}${nA}</td>
       <td class="sc ${m.status === 'finished' ? 'done' : ''}">${score}</td>
@@ -163,9 +189,10 @@ function printEvent(ev) {
     <div class="groups" style="grid-template-columns:repeat(${groupCols},1fr)">
       ${ev.groups.map(t => {
         const sorted = [...t.matches].sort((a,b) => (a.position||0)-(b.position||0))
+        const showRound = sorted.some(m => m.round)
         return `<div class="box">
           <div class="box-hd">Grupo ${esc(t.group)}</div>
-          <table>${sorted.map(matchRow).join('')}</table>
+          <table>${sorted.map(m => matchRow(m, showRound)).join('')}</table>
         </div>`
       }).join('')}
     </div>` : ''
@@ -181,7 +208,7 @@ function printEvent(ev) {
           ${rounds.map(({ round, matches }) => `
             <div class="box">
               <div class="box-hd">${esc((ROUND_LABELS[round?.toLowerCase()] ?? round) || 'Partidas')}</div>
-              <table>${[...matches].sort((a, b) => (a.position||0) - (b.position||0)).map(matchRow).join('')}</table>
+              <table>${[...matches].sort((a, b) => (a.position||0) - (b.position||0)).map(m => matchRow(m)).join('')}</table>
             </div>`).join('')}
         </div>
       </div>`
@@ -194,7 +221,7 @@ function printEvent(ev) {
       ${chunks.map((chunk, i) => `
         <div class="box">
           <div class="box-hd">Partidas${cols > 1 ? ` (${i + 1}/${cols})` : ''}</div>
-          <table>${chunk.map(matchRow).join('')}</table>
+          <table>${chunk.map(m => matchRow(m)).join('')}</table>
         </div>`).join('')}
     </div>`
   })() : ''
@@ -292,7 +319,7 @@ function printEvent(ev) {
         ${rounds.map(({ round, matches }) => `
           <div class="box">
             <div class="box-hd">${esc(ROUND_LABELS[round?.toLowerCase()] ?? round)}</div>
-            <table>${[...matches].sort((a,b)=>(a.position||0)-(b.position||0)).map(matchRow).join('')}</table>
+            <table>${[...matches].sort((a,b)=>(a.position||0)-(b.position||0)).map(m => matchRow(m)).join('')}</table>
           </div>`).join('')}
       </div>
     </div>`
@@ -314,6 +341,7 @@ function printEvent(ev) {
     tr:last-child{border-bottom:none}
     td{padding:5px 8px;font-size:10.5px}
     .tm{text-align:center;font-weight:700;color:#6b7280;white-space:nowrap;padding:5px 6px;font-size:10px;width:44px}
+    .rd{text-align:left;font-weight:700;color:#7c3aed;white-space:nowrap;padding:5px 6px;font-size:9px;width:60px}
     .dy{color:#7c3aed;font-weight:900}
     .ta{text-align:right;color:#1d4ed8;max-width:140px}
     .tb{text-align:left;color:#dc2626;max-width:140px}
@@ -359,13 +387,14 @@ function printAllMatches(matches) {
     const score = m.status === 'finished' ? `${m.scoreA} × ${m.scoreB}` : '—'
     const { day: stDay, time: stTime } = parseST(m.scheduledTime)
     const time  = (stDay || stTime) ? `<b>${stDay ? `<span style="color:#7c3aed">${esc(stDay)}</span> ` : ''}${esc(stTime)}</b>` : '<span style="color:#ccc">—</span>'
-    const round = ROUND_LABELS[m.round?.toLowerCase()] || m.round || ''
-    const parts = [m._category, m._group ? `Gr.${m._group}` : '', round].filter(Boolean)
-    const ctx   = esc(parts.join(' · '))
-    const bdr   = catBorder(m._category)
+    const round   = ROUND_LABELS[m.round?.toLowerCase()] || m.round || ''
+    const ctxPart = [m._category, m._group ? `Gr.${m._group}` : ''].filter(Boolean).join(' · ')
+    const ctx     = esc(ctxPart)
+    const bdr     = catBorder(m._category)
     return `<tr>
       <td class="tm" style="border-left:3px solid ${bdr}">${time}</td>
       <td class="ctx">${ctx}</td>
+      <td class="rd">${esc(round)}</td>
       <td class="ta ${wA ? 'win' : ''}">${wA ? '🏆 ' : ''}${nA}</td>
       <td class="sc ${m.status === 'finished' ? 'done' : ''}">${score}</td>
       <td class="tb ${wB ? 'win' : ''}">${wB ? '🏆 ' : ''}${nB}</td>
@@ -384,7 +413,8 @@ function printAllMatches(matches) {
     tr:last-child{border-bottom:none}
     td{padding:4px 7px;font-size:10.5px;vertical-align:middle}
     .tm{text-align:center;white-space:nowrap;width:42px;padding-left:8px}
-    .ctx{font-size:9px;color:#6b7280;white-space:nowrap;max-width:110px}
+    .ctx{font-size:9px;color:#6b7280;white-space:nowrap;max-width:90px}
+    .rd{font-size:9px;color:#7c3aed;font-weight:700;white-space:nowrap;max-width:70px}
     .ta{text-align:right;color:#1d4ed8;max-width:150px}
     .tb{text-align:left;color:#dc2626;max-width:150px}
     .sc{text-align:center;font-weight:900;white-space:nowrap;padding:4px 10px;color:#374151}
@@ -453,7 +483,10 @@ export default function Admin() {
   const [teams,       setTeams]       = useState([])
   const [matches,     setMatches]     = useState([])
   const [tournaments, setTournaments] = useState([])
+  const [folders,     setFolders]     = useState([])
   const [toast, setToast] = useState(null)
+  const [hiddenTabs,    setHiddenTabs]    = useState(readHiddenTabs)
+  const [settingsOpen,  setSettingsOpen]  = useState(false)
 
   const [courtName, setCourtName] = useState('')
   const [p1, setP1] = useState(''); const [p2, setP2] = useState(''); const [pCat, setPCat] = useState('')
@@ -465,21 +498,57 @@ export default function Admin() {
   const [importResult, setImportResult] = useState(null)
   const fileInputRef = useRef(null)
 
+  // Filtros da aba Chaves — mantidos ao trocar de aba
+  const [chavesSearch,   setChavesSearch]   = useState('')
+  const [chavesLayout,   setChavesLayout]   = useState('card')
+  const [chavesStatus,   setChavesStatus]   = useState(() => new Set(['playing', 'waiting', 'finished']))
+  const [chavesCategory, setChavesCategory] = useState(() => new Set())
+  const [chavesCatOpen,  setChavesCatOpen]  = useState(false)
+
   const notify = (msg, type = 'ok') => {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 4000)
   }
 
+  const toggleTabHidden = (id) => {
+    setHiddenTabs(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        if (TABS.length - prev.size <= 1) {
+          notify('Deixe ao menos uma aba visível.', 'err')
+          return prev
+        }
+        next.add(id)
+        if (tab === id) {
+          const fallback = TABS.find(t => t.id !== id && !next.has(t.id))
+          if (fallback) setTab(fallback.id)
+        }
+      }
+      localStorage.setItem(HIDDEN_TABS_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }
+
   const load = useCallback(async () => {
     try {
-      const [c, t, m, tr] = await Promise.all([
-        api.get('/courts'), api.get('/teams'), api.get('/matches'), api.get('/tournaments'),
+      const [c, t, m, tr, fo] = await Promise.all([
+        api.get('/courts'), api.get('/teams'), api.get('/matches'), api.get('/tournaments'), api.get('/tournament-folders'),
       ])
-      setCourts(c); setTeams(t); setMatches(m); setTournaments(tr)
+      setCourts(c); setTeams(t); setMatches(m); setTournaments(tr); setFolders(fo)
     } catch (err) { notify(err.message, 'err') }
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (hiddenTabs.has(tab)) {
+      const fallback = TABS.find(t => !hiddenTabs.has(t.id))
+      if (fallback) setTab(fallback.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const withReload = (fn) => async (...args) => {
     try { await fn(...args); await load() }
@@ -531,15 +600,6 @@ export default function Admin() {
   const hasBracket = standaloneMaches.some(m => m.round)
   const grouped = hasBracket ? groupByRound(standaloneMaches) : [{ round: '', matches: standaloneMaches }]
 
-  const TABS = [
-    { id: 'chaves',   label: 'Chaves' },
-    { id: 'torneios', label: 'Torneios' },
-    { id: 'copa',     label: 'Copa do Mundo' },
-    { id: 'duplas',   label: 'Duplas' },
-    { id: 'quadras',  label: 'Quadras' },
-    { id: 'chamar',   label: 'Chamada de Jogos' },
-  ]
-
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-blue-900 text-white py-4 px-6 flex items-center justify-between shadow-md">
@@ -554,12 +614,22 @@ export default function Admin() {
             Placar →
           </a>
           <button
+            onClick={() => setSettingsOpen(true)}
+            title="Configurações"
+            className="text-sm bg-white/10 text-white font-semibold w-9 h-9 rounded-lg hover:bg-white/20 transition-colors flex items-center justify-center text-lg">
+            ⚙
+          </button>
+          <button
             onClick={() => { localStorage.removeItem('auth_token'); window.location.replace('/login') }}
             className="text-sm bg-white/10 text-white font-semibold px-4 py-1.5 rounded-lg hover:bg-white/20 transition-colors">
             Sair
           </button>
         </div>
       </header>
+
+      {settingsOpen && (
+        <SettingsModal tabs={TABS} hiddenTabs={hiddenTabs} onToggleTab={toggleTabHidden} onClose={() => setSettingsOpen(false)} />
+      )}
 
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-xl font-semibold text-sm max-w-sm ${
@@ -569,7 +639,7 @@ export default function Admin() {
 
       <div className="bg-white border-b shadow-sm">
         <div className="max-w-6xl mx-auto px-6 flex flex-wrap justify-center gap-1">
-          {TABS.map(t => (
+          {TABS.filter(t => !hiddenTabs.has(t.id)).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`py-3 px-5 text-sm font-semibold border-b-2 transition-colors ${
                 tab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'
@@ -589,6 +659,11 @@ export default function Admin() {
             teams={teams}
             onReload={load}
             notify={notify}
+            search={chavesSearch} setSearch={setChavesSearch}
+            layout={chavesLayout} setLayout={setChavesLayout}
+            statusFilter={chavesStatus} setStatusFilter={setChavesStatus}
+            categoryFilter={chavesCategory} setCategoryFilter={setChavesCategory}
+            catOpen={chavesCatOpen} setCatOpen={setChavesCatOpen}
           />
         )}
 
@@ -606,7 +681,7 @@ export default function Admin() {
         {/* ══ TORNEIOS ══════════════════════════════════════════ */}
         {tab === 'torneios' && (
           <TourneiosTab
-            tournaments={tournaments} teams={teams} courts={courts}
+            tournaments={tournaments} teams={teams} courts={courts} folders={folders}
             onReload={load} notify={notify}
           />
         )}
@@ -1111,10 +1186,28 @@ function QuadrasTab({ courts, courtName, setCourtName, onReload, notify, createC
 // ════════════════════════════════════════════════════════════════
 // CHAVES TAB — cards por categoria, modal com partidas
 // ════════════════════════════════════════════════════════════════
-function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onReload, notify }) {
-  const [search,        setSearch]        = useState('')
-  const [selectedKey,   setSelectedKey]   = useState(null)
-  const [layout,        setLayout]        = useState('card')
+function ChavesTab({
+  tournaments, matches: allMatches, courts, teams = [], onReload, notify,
+  search, setSearch, layout, setLayout,
+  statusFilter, setStatusFilter, categoryFilter, setCategoryFilter, catOpen, setCatOpen,
+}) {
+  const [selectedKey, setSelectedKey] = useState(null)
+
+  const toggleStatus = (id) => {
+    setStatusFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  const toggleCategory = (cat) => {
+    setCategoryFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat); else next.add(cat)
+      return next
+    })
+  }
+  const catAllowed = (cat) => categoryFilter.size === 0 || categoryFilter.has(cat || '')
 
   const action = async (id, act, body = {}) => {
     try {
@@ -1151,6 +1244,22 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
   }
   const events = Object.values(eventMap)
 
+  const matchCategory = (m) => {
+    const t = tournaments.find(tt => tt.id === m.tournamentId)
+    return t?.category || m.category || ''
+  }
+
+  const availableCategories = (() => {
+    const set = new Set()
+    for (const ev of events) set.add(ev.category || '')
+    for (const m of sMatches) set.add(m.category || '')
+    return [...set].sort((a, b) => {
+      if (a === '') return 1
+      if (b === '') return -1
+      return a.localeCompare(b)
+    })
+  })()
+
   const generateBracket = async (evName, evCategory) => {
     try {
       await api.post('/tournaments/generate-bracket', { name: evName, category: evCategory })
@@ -1161,6 +1270,8 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
 
   // Search mode — flat list across everything
   const flatList = everything
+    .filter(m => statusFilter.has(m.status))
+    .filter(m => catAllowed(matchCategory(m)))
     .filter(m => {
       if (!search) return true
       const q = search.toLowerCase()
@@ -1176,10 +1287,13 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
       return (o[a.status] ?? 1) - (o[b.status] ?? 1) || (a.position || 0) - (b.position || 0)
     })
 
-  const listMatches = everything.map(m => {
-    const t = tournaments.find(tt => tt.id === m.tournamentId)
-    return { ...m, _category: t?.category || m.category || '', _group: t?.group || '', _tournament: t || null }
-  }).sort((a, b) => {
+  const listMatches = everything
+    .filter(m => statusFilter.has(m.status))
+    .filter(m => catAllowed(matchCategory(m)))
+    .map(m => {
+      const t = tournaments.find(tt => tt.id === m.tournamentId)
+      return { ...m, _category: t?.category || m.category || '', _group: t?.group || '', _tournament: t || null }
+    }).sort((a, b) => {
     if (!a.scheduledTime && !b.scheduledTime) return (a.position || 0) - (b.position || 0)
     if (!a.scheduledTime) return 1
     if (!b.scheduledTime) return -1
@@ -1187,6 +1301,23 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
     if (dA !== dB) return dA - dB
     return parseST(a.scheduledTime).time.localeCompare(parseST(b.scheduledTime).time)
   })
+
+  // Card layout — events with aggregated stats, filtered by status
+  const cardEvents = events.map(ev => {
+    const allT   = [...ev.groups, ...(ev.standalone ? [ev.standalone] : []), ...(ev.bracket ? [ev.bracket] : [])]
+    const ms     = allT.flatMap(t => t.matches)
+    const inPlay = ms.filter(m => m.status === 'playing').length
+    const done   = ms.filter(m => m.status === 'finished').length
+    const total  = ms.length
+    return { ev, inPlay, done, total, status: eventStatusOf(inPlay, done, total) }
+  }).filter(c => statusFilter.has(c.status) && catAllowed(c.ev.category))
+
+  const standaloneInPlay = sMatches.filter(m => m.status === 'playing').length
+  const standaloneDone   = sMatches.filter(m => m.status === 'finished').length
+  const standaloneTotal  = sMatches.length
+  const showStandaloneCard = standaloneTotal > 0
+    && statusFilter.has(eventStatusOf(standaloneInPlay, standaloneDone, standaloneTotal))
+    && (categoryFilter.size === 0 || sMatches.some(m => categoryFilter.has(m.category || '')))
 
   const selectedEvent = selectedKey === '__standalone'
     ? { key: '__standalone', name: 'Partidas Avulsas', category: '', groups: [], bracket: null, standalone: null, _sMatches: sMatches }
@@ -1229,6 +1360,42 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
           onChange={e => setSearch(e.target.value)}
           className="input w-full text-base"
         />
+        <div className="flex flex-wrap gap-2 items-center pt-3 mt-3 border-t border-gray-100">
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Status:</span>
+          {STATUS_FILTER_OPTIONS.map(opt => (
+            <FilterBtn key={opt.id} active={statusFilter.has(opt.id)} variant={opt.variant}
+              onClick={() => toggleStatus(opt.id)}>
+              {opt.label}
+            </FilterBtn>
+          ))}
+        </div>
+        {availableCategories.length > 0 && (
+          <div className="pt-3 mt-3 border-t border-gray-100">
+            <button type="button" onClick={() => setCatOpen(o => !o)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide hover:text-gray-600 transition-colors">
+              <span className={`inline-block transition-transform ${catOpen ? 'rotate-90' : ''}`}>▸</span>
+              Categoria
+              {categoryFilter.size > 0 && (
+                <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full normal-case tracking-normal">
+                  {categoryFilter.size}
+                </span>
+              )}
+            </button>
+            {catOpen && (
+              <div className="flex flex-wrap gap-2 items-center mt-2">
+                <FilterBtn active={categoryFilter.size === 0} variant="blue" onClick={() => setCategoryFilter(new Set())}>
+                  Todas
+                </FilterBtn>
+                {availableCategories.map(cat => (
+                  <FilterBtn key={cat || '__none__'} active={categoryFilter.has(cat)} variant="blue"
+                    onClick={() => toggleCategory(cat)}>
+                    {cat || 'Sem categoria'}
+                  </FilterBtn>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {search ? (
@@ -1244,6 +1411,7 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
       ) : layout === 'lista' ? (
         <>
           {everything.length === 0 && <Empty msg="Nenhum torneio cadastrado. Crie um na aba Torneios." />}
+          {everything.length > 0 && listMatches.length === 0 && <Empty msg="Nenhuma partida com esse filtro." />}
           {listMatches.length > 0 && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-100">
               {listMatches.map(m => {
@@ -1276,13 +1444,11 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
       ) : (
         <>
           {everything.length === 0 && <Empty msg="Nenhum torneio cadastrado. Crie um na aba Torneios." />}
+          {everything.length > 0 && cardEvents.length === 0 && !showStandaloneCard && (
+            <Empty msg="Nenhum evento com esse filtro." />
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {events.map(ev => {
-              const allT   = [...ev.groups, ...(ev.standalone ? [ev.standalone] : []), ...(ev.bracket ? [ev.bracket] : [])]
-              const ms     = allT.flatMap(t => t.matches)
-              const inPlay = ms.filter(m => m.status === 'playing').length
-              const done   = ms.filter(m => m.status === 'finished').length
-              const total  = ms.length
+            {cardEvents.map(({ ev, inPlay, done, total }) => {
               const canGenerate = ev.groups.length >= 2
                 && ev.groups.every(t => t.matches.length > 0 && t.matches.every(m => m.status === 'finished'))
               return (
@@ -1293,12 +1459,12 @@ function ChavesTab({ tournaments, matches: allMatches, courts, teams = [], onRel
                 />
               )
             })}
-            {sMatches.length > 0 && (
+            {showStandaloneCard && (
               <EventCard
                 ev={{ key: '__standalone', name: 'Partidas Avulsas', category: '', groups: [], bracket: null }}
-                inPlay={sMatches.filter(m => m.status === 'playing').length}
-                done={sMatches.filter(m => m.status === 'finished').length}
-                total={sMatches.length}
+                inPlay={standaloneInPlay}
+                done={standaloneDone}
+                total={standaloneTotal}
                 canGenerate={false}
                 onClick={() => setSelectedKey('__standalone')}
                 onGenerateBracket={() => {}}
@@ -2153,7 +2319,7 @@ function FilterBtn({ active, onClick, children, variant = 'blue' }) {
 // ════════════════════════════════════════════════════════════════
 // TORNEIOS TAB
 // ════════════════════════════════════════════════════════════════
-function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
+function TourneiosTab({ tournaments, teams, courts, folders, onReload, notify }) {
   const categories = useCategories()
   const [evName,     setEvName]     = useState('')
   const [evCategory, setEvCategory] = useState('')
@@ -2163,12 +2329,15 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
   const [category, setCategory] = useState('')
   const [group,    setGroup]    = useState('')
 
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+
   const createEvent = async (e) => {
     e.preventDefault()
     try {
       await api.post('/tournaments/create-event', { name: evName, category: evCategory, numGroups: evGroups })
       setEvName(''); setEvCategory(''); setEvGroups(4); onReload()
-      notify(`Evento criado com ${evGroups} grupos!`)
+      notify(`Evento criado com ${evGroups} grupo${evGroups !== 1 ? 's' : ''}!`)
     } catch (err) { notify(err.message, 'err') }
   }
 
@@ -2181,28 +2350,32 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
     } catch (err) { notify(err.message, 'err') }
   }
 
-  // Detect events: same name+category with multiple groups
-  const eventMap = {}
-  for (const t of tournaments) {
-    if (!t.group) continue
-    const key = `${t.name}|||${t.category}`
-    if (!eventMap[key]) eventMap[key] = { name: t.name, category: t.category, groups: [], bracket: null }
-    eventMap[key].groups.push(t)
-  }
-  for (const t of tournaments) {
-    if (t.group) continue
-    const key = `${t.name}|||${t.category}`
-    if (eventMap[key]) eventMap[key].bracket = t
-  }
-  const events = Object.values(eventMap).filter(e => e.groups.length >= 2)
-
-  const generateBracket = async (evName, evCategory) => {
+  const assignFolder = async (evName, evCategory, folderId) => {
     try {
-      await api.post('/tournaments/generate-bracket', { name: evName, category: evCategory })
+      await api.post('/tournaments/assign-folder', { name: evName, category: evCategory, folderId })
       onReload()
-      notify('🏆 Chave final gerada com sucesso!')
+      notify(folderId ? 'Torneio arquivado!' : 'Torneio desarquivado.')
     } catch (err) { notify(err.message, 'err') }
   }
+
+  const createFolder = async () => {
+    const name = newFolderName.trim()
+    if (!name) return
+    try {
+      await api.post('/tournament-folders', { name })
+      setNewFolderName(''); setNewFolderOpen(false); onReload()
+      notify('Pasta criada!')
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  const deleteFolder = async (id) => {
+    try {
+      await api.delete(`/tournament-folders/${id}`)
+      onReload(); notify('Pasta excluída.')
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  const unfiled = tournaments.filter(t => !t.folderId)
 
   return (
     <>
@@ -2222,7 +2395,7 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
           <div>
             <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide block mb-2">Número de Grupos</label>
             <div className="flex gap-2">
-              {[2, 3, 4, 5, 6].map(n => (
+              {[1, 2, 3, 4, 5, 6].map(n => (
                 <button key={n} type="button" onClick={() => setEvGroups(n)}
                   className={`w-12 h-10 rounded-xl text-sm font-black border-2 transition-colors ${
                     evGroups === n
@@ -2234,7 +2407,9 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
               ))}
             </div>
             <p className="text-xs text-gray-400 mt-1.5">
-              Serão criados os Grupos {['A','B','C','D','E','F'].slice(0, evGroups).join(', ')}
+              {evGroups === 1
+                ? 'Será criado 1 grupo único (todas as duplas se enfrentam, sem chave final).'
+                : `Serão criados os Grupos ${['A','B','C','D','E','F'].slice(0, evGroups).join(', ')}`}
             </p>
           </div>
           <Btn type="submit" color="blue">Criar Evento</Btn>
@@ -2274,6 +2449,83 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
         </div>
       </details>
 
+      <TorneiosList
+        tournaments={unfiled} teams={teams} courts={courts} onReload={onReload} notify={notify}
+        archiveMode="archive" folders={folders} onArchive={assignFolder}
+        emptyMsg="Nenhum torneio criado. Crie um acima."
+      />
+
+      {/* ── Pastas / Arquivo ──────────────────────────── */}
+      <div className="pt-2">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide">📁 Pastas</h3>
+          {newFolderOpen ? (
+            <div className="flex gap-1">
+              <input autoFocus value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); createFolder() }
+                  if (e.key === 'Escape') { e.preventDefault(); setNewFolderOpen(false); setNewFolderName('') }
+                }}
+                placeholder="Nome da pasta" className="input text-xs py-1" />
+              <button type="button" onClick={createFolder}
+                className="px-2 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">✓</button>
+              <button type="button" onClick={() => { setNewFolderOpen(false); setNewFolderName('') }}
+                className="px-2 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">✕</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setNewFolderOpen(true)}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors">
+              + Nova pasta
+            </button>
+          )}
+        </div>
+        {folders.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">Nenhuma pasta criada ainda.</p>
+        ) : (
+          <div className="space-y-3">
+            {folders.map(f => (
+              <FolderSection key={f.id} folder={f} tournaments={tournaments.filter(t => t.folderId === f.id)}
+                teams={teams} courts={courts} onReload={onReload} notify={notify}
+                onUnarchive={assignFolder} onDelete={deleteFolder} />
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════
+// TORNEIOS LIST — eventos com fase de grupos + cards de torneio.
+// Reaproveitada tanto pra lista principal (não-arquivados) quanto
+// pra dentro de cada pasta (arquivados).
+// ════════════════════════════════════════════════════════════════
+function TorneiosList({ tournaments, teams, courts, onReload, notify, folders, archiveMode, onArchive, emptyMsg }) {
+  // Detect events: same name+category with multiple groups
+  const eventMap = {}
+  for (const t of tournaments) {
+    if (!t.group) continue
+    const key = `${t.name}|||${t.category}`
+    if (!eventMap[key]) eventMap[key] = { name: t.name, category: t.category, groups: [], bracket: null }
+    eventMap[key].groups.push(t)
+  }
+  for (const t of tournaments) {
+    if (t.group) continue
+    const key = `${t.name}|||${t.category}`
+    if (eventMap[key]) eventMap[key].bracket = t
+  }
+  const events = Object.values(eventMap).filter(e => e.groups.length >= 2)
+
+  const generateBracket = async (evName, evCategory) => {
+    try {
+      await api.post('/tournaments/generate-bracket', { name: evName, category: evCategory })
+      onReload()
+      notify('🏆 Chave final gerada com sucesso!')
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  return (
+    <>
       {/* ── Eventos com fase de grupos detectados ──── */}
       {events.map(ev => {
         const allDone = ev.groups.every(t =>
@@ -2288,9 +2540,17 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
                 <span className="bg-yellow-400 text-gray-900 text-xs font-black px-2 py-0.5 rounded-full uppercase">{ev.category}</span>
                 <span className="text-blue-500 text-sm">{ev.groups.length} grupos</span>
               </div>
-              <Btn color="blue" disabled={!allDone} onClick={() => generateBracket(ev.name, ev.category)}>
-                {ev.bracket ? '🔄 Regerar Chave Final' : allDone ? '🏆 Gerar Chave Final' : '⏳ Aguardando grupos...'}
-              </Btn>
+              <div className="flex items-center gap-2">
+                {archiveMode === 'archive' && (
+                  <ArchiveControl folders={folders} onArchive={(folderId) => onArchive(ev.name, ev.category, folderId)} />
+                )}
+                {archiveMode === 'unarchive' && (
+                  <Btn color="gray" onClick={() => onArchive(ev.name, ev.category, null)}>📤 Desarquivar</Btn>
+                )}
+                <Btn color="blue" disabled={!allDone} onClick={() => generateBracket(ev.name, ev.category)}>
+                  {ev.bracket ? '🔄 Regerar Chave Final' : allDone ? '🏆 Gerar Chave Final' : '⏳ Aguardando grupos...'}
+                </Btn>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {ev.groups.map(t => {
@@ -2315,7 +2575,7 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
         )
       })}
 
-      {tournaments.length === 0 && <Empty msg="Nenhum torneio criado. Crie um acima." />}
+      {tournaments.length === 0 && <Empty msg={emptyMsg || 'Nenhum torneio aqui.'} />}
 
       {[...tournaments].sort((a, b) => {
         const isFinished  = t => t.matches.length > 0 && t.matches.every(m => m.status === 'finished')
@@ -2323,16 +2583,106 @@ function TourneiosTab({ tournaments, teams, courts, onReload, notify }) {
         const sinks = t => isFinished(t) || hasBracket(t)
         return sinks(a) - sinks(b)
       }).map(t => (
-        <TournamentCard key={t.id} tournament={t} teams={teams} courts={courts} allTournaments={tournaments} onReload={onReload} notify={notify} />
+        <TournamentCard key={t.id} tournament={t} teams={teams} courts={courts} allTournaments={tournaments} onReload={onReload} notify={notify}
+          archiveMode={archiveMode} folders={folders} onArchive={onArchive} />
       ))}
     </>
+  )
+}
+
+// ── ArchiveControl — dropdown pra escolher/criar pasta e arquivar ──
+function ArchiveControl({ folders, onArchive }) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const pick = (folderId) => { setOpen(false); onArchive(folderId) }
+
+  const createAndPick = async () => {
+    const name = draft.trim()
+    if (!name) return
+    try {
+      const folder = await api.post('/tournament-folders', { name })
+      setDraft('')
+      pick(folder.id)
+    } catch { /* notify já tratado no reload do pai via onArchive */ }
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <Btn color="gray" onClick={() => setOpen(o => !o)} title="Arquivar em uma pasta">📁 Arquivar</Btn>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-20 w-56 bg-white rounded-xl shadow-xl border border-gray-200 p-2 space-y-1">
+          {folders.length === 0 && <p className="text-xs text-gray-400 px-1 py-1">Nenhuma pasta ainda.</p>}
+          {folders.map(f => (
+            <button key={f.id} type="button" onClick={() => pick(f.id)}
+              className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-100 flex items-center justify-between gap-2">
+              <span className="truncate">📁 {f.name}</span>
+              <span className="text-xs text-gray-400 shrink-0">{f._count?.tournaments ?? 0}</span>
+            </button>
+          ))}
+          <div className="flex gap-1 pt-1 border-t border-gray-100">
+            <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Nova pasta..."
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndPick() } }}
+              className="input flex-1 text-xs py-1" />
+            <button type="button" onClick={createAndPick}
+              className="px-2 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">✓</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── FolderSection — pasta colapsável com os torneios arquivados ──
+function FolderSection({ folder, tournaments, teams, courts, onReload, notify, onUnarchive, onDelete }) {
+  const storageKey = `folder_open_${folder.id}`
+  const [open, setOpen] = useState(() => localStorage.getItem(storageKey) === 'true')
+  const { confirm, modal: confirmModal } = useConfirm()
+
+  const toggleOpen = (v) => { setOpen(v); localStorage.setItem(storageKey, String(v)) }
+
+  const handleDelete = async () => {
+    if (tournaments.length > 0) return notify('Só é possível excluir pastas vazias.', 'err')
+    if (!await confirm(`Excluir a pasta "${folder.name}"?`)) return
+    onDelete(folder.id)
+  }
+
+  return (
+    <div className="bg-gray-50 rounded-2xl border border-gray-200">
+      <div className="flex items-center justify-between px-5 py-3">
+        <button type="button" onClick={() => toggleOpen(!open)} className="flex items-center gap-2 font-bold text-gray-700">
+          <span className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+          📁 {folder.name}
+          <span className="text-xs font-normal text-gray-400">{tournaments.length} torneio{tournaments.length !== 1 ? 's' : ''}</span>
+        </button>
+        <button type="button" onClick={handleDelete} title="Excluir pasta"
+          className="text-gray-300 hover:text-red-500 text-xs px-1 transition-colors">🗑</button>
+      </div>
+      {open && (
+        <div className="px-5 pb-5 space-y-4">
+          {tournaments.length === 0
+            ? <Empty msg="Pasta vazia." />
+            : <TorneiosList tournaments={tournaments} teams={teams} courts={courts} onReload={onReload} notify={notify}
+                archiveMode="unarchive" onArchive={onUnarchive} />}
+        </div>
+      )}
+      {confirmModal}
+    </div>
   )
 }
 
 // ════════════════════════════════════════════════════════════════
 // TOURNAMENT CARD
 // ════════════════════════════════════════════════════════════════
-function TournamentCard({ tournament, teams, courts, allTournaments = [], onReload, notify }) {
+function TournamentCard({ tournament, teams, courts, allTournaments = [], onReload, notify, archiveMode, folders, onArchive }) {
   const [selectedIds,  setSelectedIds]  = useState(new Set())
   const [dropOpen,     setDropOpen]     = useState(false)
   const dropRef = useRef(null)
@@ -2453,6 +2803,12 @@ function TournamentCard({ tournament, teams, courts, allTournaments = [], onRelo
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {archiveMode === 'archive' && (
+            <ArchiveControl folders={folders} onArchive={(folderId) => onArchive(tournament.name, tournament.category, folderId)} />
+          )}
+          {archiveMode === 'unarchive' && (
+            <Btn color="gray" onClick={() => onArchive(tournament.name, tournament.category, null)}>📤 Desarquivar</Btn>
+          )}
           <Btn color="green" onClick={generate} disabled={tournament.entries.length < 2}>⚙ Gerar Chave</Btn>
           {tournament.matches.length > 0 && (
             <Btn color="red" onClick={deleteMatches} title="Excluir partidas da chave">🗑 Chave</Btn>
@@ -2837,6 +3193,46 @@ function ImportResult({ result }) {
 // ════════════════════════════════════════════════════════════════
 // CONFIRM MODAL
 // ════════════════════════════════════════════════════════════════
+// ── SettingsModal — engrenagem: liga/desliga abas (mais opções no futuro) ──
+function SettingsModal({ tabs, hiddenTabs, onToggleTab, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="bg-gray-900 text-white px-5 py-4 rounded-t-2xl flex items-center justify-between">
+          <span className="font-black text-lg">⚙ Configurações</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+        </div>
+        <div className="p-5">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Abas visíveis</h3>
+          <p className="text-xs text-gray-400 mb-3">
+            Desligue abas que você não vai usar por um tempo. Os dados continuam salvos — é só religar aqui pra voltar a vê-las.
+          </p>
+          <div className="divide-y divide-gray-100">
+            {tabs.map(t => {
+              const visible = !hiddenTabs.has(t.id)
+              return (
+                <div key={t.id} className="flex items-center justify-between py-2.5">
+                  <span className={`text-sm font-semibold ${visible ? 'text-gray-800' : 'text-gray-400'}`}>{t.label}</span>
+                  <ToggleSwitch checked={visible} onChange={() => onToggleTab(t.id)} />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ToggleSwitch({ checked, onChange }) {
+  return (
+    <button type="button" onClick={onChange} role="switch" aria-checked={checked}
+      className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${checked ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : ''}`} />
+    </button>
+  )
+}
+
 function ConfirmModal({ message, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"

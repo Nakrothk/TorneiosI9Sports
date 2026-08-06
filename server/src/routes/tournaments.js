@@ -41,7 +41,7 @@ router.post('/', async (req, res, next) => {
 })
 
 // ── POST /tournaments/create-event ─────────────────────────────
-// Creates N group tournaments at once for an event (numGroups: 2–6).
+// Creates N group tournaments at once for an event (numGroups: 1–6).
 router.post('/create-event', async (req, res, next) => {
   try {
     const { name, category, numGroups } = req.body
@@ -49,8 +49,8 @@ router.post('/create-event', async (req, res, next) => {
       return res.status(400).json({ error: 'name e category são obrigatórios' })
     }
     const n = parseInt(numGroups)
-    if (!n || n < 2 || n > 6) {
-      return res.status(400).json({ error: 'numGroups deve ser entre 2 e 6' })
+    if (!n || n < 1 || n > 6) {
+      return res.status(400).json({ error: 'numGroups deve ser entre 1 e 6' })
     }
 
     const existing = await prisma.tournament.findFirst({
@@ -70,6 +70,27 @@ router.post('/create-event', async (req, res, next) => {
       created.push(t)
     }
     res.status(201).json(created)
+  } catch (err) { next(err) }
+})
+
+// ── POST /tournaments/assign-folder ─────────────────────────────
+// Arquiva/desarquiva um evento inteiro (todos os grupos + chave final) de uma vez,
+// já que "evento" = todas as tournaments com mesmo name+category.
+router.post('/assign-folder', async (req, res, next) => {
+  try {
+    const { name, category, folderId } = req.body
+    if (!name?.trim()) return res.status(400).json({ error: 'name é obrigatório' })
+
+    if (folderId) {
+      const folder = await prisma.tournamentFolder.findUnique({ where: { id: folderId } })
+      if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' })
+    }
+
+    await prisma.tournament.updateMany({
+      where: { name: name.trim(), category: category?.trim() || '' },
+      data: { folderId: folderId || null },
+    })
+    res.json({ ok: true })
   } catch (err) { next(err) }
 })
 

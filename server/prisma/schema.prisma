@@ -34,6 +34,15 @@ model Tournament {
   createdAt DateTime          @default(now())
   entries   TournamentEntry[]
   matches   Match[]
+  folderId  String?
+  folder    TournamentFolder? @relation(fields: [folderId], references: [id])
+}
+
+model TournamentFolder {
+  id          String       @id @default(cuid())
+  name        String
+  createdAt   DateTime     @default(now())
+  tournaments Tournament[]
 }
 
 model TournamentEntry {
