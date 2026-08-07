@@ -166,11 +166,11 @@ function Standby({ label }) {
 /* ─── Tamanho de fonte adaptativo para nomes longos ───────────── */
 function nameFontSize(name) {
   const len = name?.length ?? 0
-  if (len > 50) return 'clamp(1.1rem, 2.2vw, 2.4rem)'
-  if (len > 40) return 'clamp(1.2rem, 2.6vw, 2.9rem)'
-  if (len > 30) return 'clamp(1.4rem, 3.2vw, 3.6rem)'
-  if (len > 22) return 'clamp(1.6rem, 3.8vw, 4.5rem)'
-  return 'clamp(1.8rem, 4.5vw, 5.5rem)'
+  if (len > 50) return 'clamp(1.3rem, 2.6vw, 2.8rem)'
+  if (len > 40) return 'clamp(1.4rem, 3.1vw, 3.4rem)'
+  if (len > 30) return 'clamp(1.6rem, 3.8vw, 4.2rem)'
+  if (len > 22) return 'clamp(1.9rem, 4.5vw, 5.2rem)'
+  return 'clamp(2.1rem, 5.3vw, 6.4rem)'
 }
 
 /* ─── Card de chamada ─────────────────────────────────────────── */
