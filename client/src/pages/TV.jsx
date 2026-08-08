@@ -163,14 +163,25 @@ function Standby({ label }) {
   )
 }
 
-/* ─── Tamanho de fonte adaptativo para nomes longos ───────────── */
+/* ─── Tamanho de fonte adaptativo para nomes longos ───────────────
+   Cada dupla ocupa 2 linhas (um jogador embaixo do outro), então o
+   tamanho é calculado por nome individual (não mais pelo nome combinado). */
 function nameFontSize(name) {
   const len = name?.length ?? 0
-  if (len > 50) return 'clamp(1.3rem, 2.6vw, 2.8rem)'
-  if (len > 40) return 'clamp(1.4rem, 3.1vw, 3.4rem)'
-  if (len > 30) return 'clamp(1.6rem, 3.8vw, 4.2rem)'
-  if (len > 22) return 'clamp(1.9rem, 4.5vw, 5.2rem)'
-  return 'clamp(2.1rem, 5.3vw, 6.4rem)'
+  if (len > 24) return 'clamp(1.8rem, 3.6vw, 4.0rem)'
+  if (len > 18) return 'clamp(2.0rem, 4.3vw, 4.7rem)'
+  if (len > 13) return 'clamp(2.4rem, 5.3vw, 5.8rem)'
+  if (len > 9)  return 'clamp(2.8rem, 6.1vw, 7.1rem)'
+  return 'clamp(3.1rem, 7.1vw, 8.2rem)'
+}
+
+// Jogador 1 embaixo do jogador 2, sem "/" — cai pra um nome só,
+// centralizado, se vier texto livre (chamada avulsa) sem "/" pra separar.
+function nameLines(team, fallbackName) {
+  if (team) return [team.player1, team.player2]
+  const raw = fallbackName || 'A definir'
+  const parts = raw.split('/').map(s => s.trim()).filter(Boolean)
+  return parts.length > 1 ? parts : [raw]
 }
 
 /* ─── Card de chamada ─────────────────────────────────────────── */
@@ -182,8 +193,11 @@ function CallCard({ match, showCourt }) {
   const courtLabel  = parts ? parts[1].trim() || 'Quadra' : courtName
   const courtNumber = parts ? parts[2] : null
 
-  const nameA = match.teamA ? `${match.teamA.player1} / ${match.teamA.player2}` : (match.teamAName || 'A definir')
-  const nameB = match.teamB ? `${match.teamB.player1} / ${match.teamB.player2}` : (match.teamBName || 'A definir')
+  const linesA = nameLines(match.teamA, match.teamAName)
+  const linesB = nameLines(match.teamB, match.teamBName)
+  // Mesmo tamanho pras duas duplas: baseado no nome mais longo entre as 4.
+  const longestName = [...linesA, ...linesB].reduce((a, b) => (a.length >= b.length ? a : b))
+  const size = nameFontSize(longestName)
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -209,12 +223,16 @@ function CallCard({ match, showCourt }) {
 
       {/* Duplas */}
       <div className="bg-slate-900 text-white text-center flex flex-col items-center justify-center flex-1 min-h-0 px-10 gap-2 overflow-hidden">
-        <div className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden">
-          <p className={`font-black leading-tight w-full break-words ${COLOR_TEXT[match.teamA?.colorTeam] ?? 'text-sky-300'}`} style={{ fontSize: nameFontSize(nameA) }}>{nameA}</p>
+        <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-center overflow-hidden">
+          {linesA.map((line, i) => (
+            <p key={i} className={`font-black leading-tight w-full break-words ${COLOR_TEXT[match.teamA?.colorTeam] ?? 'text-sky-300'}`} style={{ fontSize: size }}>{line}</p>
+          ))}
         </div>
         <p className="font-black text-slate-500 tracking-widest shrink-0" style={{ fontSize: 'clamp(1.5rem, 3.5vw, 4rem)' }}>×</p>
-        <div className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden">
-          <p className={`font-black leading-tight w-full break-words ${COLOR_TEXT[match.teamB?.colorTeam] ?? 'text-rose-300'}`} style={{ fontSize: nameFontSize(nameB) }}>{nameB}</p>
+        <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-center overflow-hidden">
+          {linesB.map((line, i) => (
+            <p key={i} className={`font-black leading-tight w-full break-words ${COLOR_TEXT[match.teamB?.colorTeam] ?? 'text-rose-300'}`} style={{ fontSize: size }}>{line}</p>
+          ))}
         </div>
       </div>
 
