@@ -168,11 +168,11 @@ function Standby({ label }) {
    tamanho é calculado por nome individual (não mais pelo nome combinado). */
 function nameFontSize(name) {
   const len = name?.length ?? 0
-  if (len > 24) return 'clamp(1.8rem, 3.6vw, 4.0rem)'
-  if (len > 18) return 'clamp(2.0rem, 4.3vw, 4.7rem)'
-  if (len > 13) return 'clamp(2.4rem, 5.3vw, 5.8rem)'
-  if (len > 9)  return 'clamp(2.8rem, 6.1vw, 7.1rem)'
-  return 'clamp(3.1rem, 7.1vw, 8.2rem)'
+  if (len > 24) return 'clamp(2.2rem, 4.3vw, 4.8rem)'
+  if (len > 18) return 'clamp(2.4rem, 5.2vw, 5.6rem)'
+  if (len > 13) return 'clamp(2.9rem, 6.4vw, 7.0rem)'
+  if (len > 9)  return 'clamp(3.4rem, 7.3vw, 8.5rem)'
+  return 'clamp(3.7rem, 8.5vw, 9.8rem)'
 }
 
 // Jogador 1 embaixo do jogador 2, sem "/" — cai pra um nome só,
