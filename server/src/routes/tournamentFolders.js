@@ -24,6 +24,20 @@ router.post('/', async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+// ── PUT /tournament-folders/:id ─────────────────────────────────
+// Renomeia uma pasta (a aba Arquivados funciona como uma "área de trabalho").
+router.put('/:id', async (req, res, next) => {
+  try {
+    const { name } = req.body
+    if (!name?.trim()) return res.status(400).json({ error: 'name é obrigatório' })
+    const folder = await prisma.tournamentFolder.update({
+      where: { id: req.params.id },
+      data: { name: name.trim() },
+    })
+    res.json(folder)
+  } catch (err) { next(err) }
+})
+
 // ── DELETE /tournament-folders/:id ──────────────────────────────
 // Só permite excluir pastas vazias, pra não perder torneio arquivado por engano.
 router.delete('/:id', async (req, res, next) => {

@@ -36,6 +36,10 @@ model Tournament {
   matches   Match[]
   folderId  String?
   folder    TournamentFolder? @relation(fields: [folderId], references: [id])
+  // Cópia congelada (nomes/placares/classificação) tirada no momento do arquivamento.
+  // A aba Arquivados renderiza a partir daqui, então o arquivado sobrevive mesmo que
+  // as duplas sejam editadas ou excluídas depois. Fica null enquanto não-arquivado.
+  snapshot  Json?
 }
 
 model TournamentFolder {
