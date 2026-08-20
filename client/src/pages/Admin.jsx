@@ -17,12 +17,13 @@ function readHiddenTabs() {
 }
 
 const TABS = [
-  { id: 'chaves',   label: 'Chaves' },
-  { id: 'torneios', label: 'Torneios' },
-  { id: 'copa',     label: 'Copa do Mundo' },
-  { id: 'duplas',   label: 'Duplas' },
-  { id: 'quadras',  label: 'Quadras' },
-  { id: 'chamar',   label: 'Chamada de Jogos' },
+  { id: 'chaves',     label: 'Chaves' },
+  { id: 'torneios',   label: 'Torneios' },
+  { id: 'copa',       label: 'Copa do Mundo' },
+  { id: 'duplas',     label: 'Duplas' },
+  { id: 'quadras',    label: 'Quadras' },
+  { id: 'chamar',     label: 'Chamada de Jogos' },
+  { id: 'arquivados', label: 'Arquivados' },
 ]
 
 // ── categorias ───────────────────────────────────────────────────
@@ -653,7 +654,7 @@ export default function Admin() {
         {/* ══ CHAVES ════════════════════════════════════════════ */}
         {tab === 'chaves' && (
           <ChavesTab
-            tournaments={tournaments}
+            tournaments={tournaments.filter(t => !t.folderId)}
             matches={matches}
             courts={courts}
             teams={teams}
@@ -670,7 +671,7 @@ export default function Admin() {
         {/* ══ COPA DO MUNDO ════════════════════════════════════ */}
         {tab === 'copa' && (
           <CopaTab
-            tournaments={tournaments.filter(t => t.type === 'ffa')}
+            tournaments={tournaments.filter(t => t.type === 'ffa' && !t.folderId)}
             teams={teams}
             courts={courts}
             onReload={load}
@@ -709,6 +710,13 @@ export default function Admin() {
             mTeamBName={mTeamBName} setMTeamBName={setMTeamBName}
             mCategory={mCategory} setMCategory={setMCategory}
             chamarJogo={chamarJogo} onAction={matchAction} onDelete={deleteMatch} />
+        )}
+
+        {/* ══ ARQUIVADOS ════════════════════════════════════════ */}
+        {tab === 'arquivados' && (
+          <ArquivadosTab
+            tournaments={tournaments} folders={folders} courts={courts}
+            onReload={load} notify={notify} />
         )}
       </main>
     </div>
@@ -2329,9 +2337,6 @@ function TourneiosTab({ tournaments, teams, courts, folders, onReload, notify })
   const [category, setCategory] = useState('')
   const [group,    setGroup]    = useState('')
 
-  const [newFolderOpen, setNewFolderOpen] = useState(false)
-  const [newFolderName, setNewFolderName] = useState('')
-
   const createEvent = async (e) => {
     e.preventDefault()
     try {
@@ -2354,28 +2359,12 @@ function TourneiosTab({ tournaments, teams, courts, folders, onReload, notify })
     try {
       await api.post('/tournaments/assign-folder', { name: evName, category: evCategory, folderId })
       onReload()
-      notify(folderId ? 'Torneio arquivado!' : 'Torneio desarquivado.')
-    } catch (err) { notify(err.message, 'err') }
-  }
-
-  const createFolder = async () => {
-    const name = newFolderName.trim()
-    if (!name) return
-    try {
-      await api.post('/tournament-folders', { name })
-      setNewFolderName(''); setNewFolderOpen(false); onReload()
-      notify('Pasta criada!')
-    } catch (err) { notify(err.message, 'err') }
-  }
-
-  const deleteFolder = async (id) => {
-    try {
-      await api.delete(`/tournament-folders/${id}`)
-      onReload(); notify('Pasta excluída.')
+      notify(folderId ? 'Torneio arquivado! Veja na aba Arquivados.' : 'Torneio desarquivado.')
     } catch (err) { notify(err.message, 'err') }
   }
 
   const unfiled = tournaments.filter(t => !t.folderId)
+  const archivedCount = tournaments.length - unfiled.length
 
   return (
     <>
@@ -2455,42 +2444,13 @@ function TourneiosTab({ tournaments, teams, courts, folders, onReload, notify })
         emptyMsg="Nenhum torneio criado. Crie um acima."
       />
 
-      {/* ── Pastas / Arquivo ──────────────────────────── */}
-      <div className="pt-2">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide">📁 Pastas</h3>
-          {newFolderOpen ? (
-            <div className="flex gap-1">
-              <input autoFocus value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { e.preventDefault(); createFolder() }
-                  if (e.key === 'Escape') { e.preventDefault(); setNewFolderOpen(false); setNewFolderName('') }
-                }}
-                placeholder="Nome da pasta" className="input text-xs py-1" />
-              <button type="button" onClick={createFolder}
-                className="px-2 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">✓</button>
-              <button type="button" onClick={() => { setNewFolderOpen(false); setNewFolderName('') }}
-                className="px-2 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">✕</button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => setNewFolderOpen(true)}
-              className="text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors">
-              + Nova pasta
-            </button>
-          )}
-        </div>
-        {folders.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">Nenhuma pasta criada ainda.</p>
-        ) : (
-          <div className="space-y-3">
-            {folders.map(f => (
-              <FolderSection key={f.id} folder={f} tournaments={tournaments.filter(t => t.folderId === f.id)}
-                teams={teams} courts={courts} onReload={onReload} notify={notify}
-                onUnarchive={assignFolder} onDelete={deleteFolder} />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* ── Atalho pro arquivo ────────────────────────── */}
+      {archivedCount > 0 && (
+        <p className="text-xs text-gray-400 pt-1">
+          🔒 {archivedCount} torneio{archivedCount !== 1 ? 's' : ''} arquivado{archivedCount !== 1 ? 's' : ''} —
+          veja e gerencie na aba <span className="font-semibold text-gray-500">Arquivados</span>.
+        </p>
+      )}
     </>
   )
 }
@@ -2590,91 +2550,305 @@ function TorneiosList({ tournaments, teams, courts, onReload, notify, folders, a
   )
 }
 
-// ── ArchiveControl — dropdown pra escolher/criar pasta e arquivar ──
-function ArchiveControl({ folders, onArchive }) {
+// ── ArchiveControl — botão + modal pra escolher/criar pasta ─────────
+// Usado tanto pra arquivar (na aba Torneios) quanto pra mover entre pastas
+// (na aba Arquivados). Abre um modal médio centralizado.
+function ArchiveControl({ folders, onArchive, label = '📁 Arquivar', heading = 'Arquivar torneio', title = 'Arquivar em uma pasta' }) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
-  const ref = useRef(null)
 
-  useEffect(() => {
-    if (!open) return
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  const pick = (folderId) => { setOpen(false); onArchive(folderId) }
+  const close = () => { setOpen(false); setDraft('') }
+  const pick  = (folderId) => { close(); onArchive(folderId) }
 
   const createAndPick = async () => {
     const name = draft.trim()
     if (!name) return
     try {
       const folder = await api.post('/tournament-folders', { name })
-      setDraft('')
       pick(folder.id)
-    } catch { /* notify já tratado no reload do pai via onArchive */ }
+    } catch { /* erro tratado no reload do pai via onArchive */ }
   }
 
   return (
-    <div className="relative" ref={ref}>
-      <Btn color="gray" onClick={() => setOpen(o => !o)} title="Arquivar em uma pasta">📁 Arquivar</Btn>
+    <>
+      <Btn color="gray" onClick={() => setOpen(true)} title={title}>{label}</Btn>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 w-56 bg-white rounded-xl shadow-xl border border-gray-200 p-2 space-y-1">
-          {folders.length === 0 && <p className="text-xs text-gray-400 px-1 py-1">Nenhuma pasta ainda.</p>}
-          {folders.map(f => (
-            <button key={f.id} type="button" onClick={() => pick(f.id)}
-              className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-100 flex items-center justify-between gap-2">
-              <span className="truncate">📁 {f.name}</span>
-              <span className="text-xs text-gray-400 shrink-0">{f._count?.tournaments ?? 0}</span>
-            </button>
-          ))}
-          <div className="flex gap-1 pt-1 border-t border-gray-100">
-            <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Nova pasta..."
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndPick() } }}
-              className="input flex-1 text-xs py-1" />
-            <button type="button" onClick={createAndPick}
-              className="px-2 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">✓</button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={close}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="bg-gray-900 text-white px-5 py-4 rounded-t-2xl flex items-center justify-between">
+              <span className="font-black text-lg">📁 {heading}</span>
+              <button onClick={close} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-500">
+                Escolha a pasta de destino. O torneio fica salvo pra sempre e some das outras abas.
+              </p>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {folders.length === 0 && (
+                  <p className="text-sm text-gray-400 italic px-1">Nenhuma pasta ainda — crie uma abaixo.</p>
+                )}
+                {folders.map(f => (
+                  <button key={f.id} type="button" onClick={() => pick(f.id)}
+                    className="w-full text-left px-3 py-2.5 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 flex items-center justify-between gap-2 transition-colors">
+                    <span className="font-semibold text-gray-700 truncate">📁 {f.name}</span>
+                    <span className="text-xs text-gray-400 shrink-0">{f._count?.tournaments ?? 0} torneio(s)</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 pt-3 border-t border-gray-100">
+                <input autoFocus value={draft} onChange={e => setDraft(e.target.value)} placeholder="Nome da nova pasta..."
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndPick() } }}
+                  className="input flex-1 text-sm" />
+                <button type="button" onClick={createAndPick} disabled={!draft.trim()}
+                  className="px-4 text-sm font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                  Criar e mover
+                </button>
+              </div>
+            </div>
           </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════
+// ARQUIVADOS TAB — "área de trabalho" de pastas com torneios congelados.
+// Renderiza a partir do snapshot (t.snapshot), então o arquivado sobrevive
+// mesmo que as duplas sejam editadas/excluídas depois.
+// ════════════════════════════════════════════════════════════════
+// Substitui as relações vivas pelo snapshot congelado.
+const frozenRows = (t) => t.snapshot
+  ? { ...t, entries: t.snapshot.entries || [], matches: t.snapshot.matches || [] }
+  : t
+
+// Agrupa linhas de torneio (grupos + chave) por evento (nome+categoria).
+function groupArchivedEvents(rows) {
+  const map = {}
+  for (const t of rows) {
+    const key = `${t.name}|||${t.category}`
+    if (!map[key]) map[key] = { key, name: t.name, category: t.category, rows: [] }
+    map[key].rows.push(t)
+  }
+  return Object.values(map).sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function ArquivadosTab({ tournaments, folders, courts, onReload, notify }) {
+  const [newFolderName, setNewFolderName] = useState('')
+  const [renamingId,    setRenamingId]    = useState(null)
+  const [renameDraft,   setRenameDraft]   = useState('')
+  const [openFolderId,  setOpenFolderId]  = useState(null)
+  const { confirm, modal: confirmModal } = useConfirm()
+
+  const archived = tournaments.filter(t => t.folderId)
+  const rowsOf   = (fid) => archived.filter(t => t.folderId === fid)
+
+  const createFolder = async () => {
+    const name = newFolderName.trim()
+    if (!name) return
+    try { await api.post('/tournament-folders', { name }); setNewFolderName(''); onReload(); notify('Pasta criada!') }
+    catch (err) { notify(err.message, 'err') }
+  }
+
+  const renameFolder = async (id) => {
+    const name = renameDraft.trim()
+    if (!name) { setRenamingId(null); return }
+    try { await api.put(`/tournament-folders/${id}`, { name }); setRenamingId(null); setRenameDraft(''); onReload(); notify('Pasta renomeada.') }
+    catch (err) { notify(err.message, 'err') }
+  }
+
+  const deleteFolder = async (id, count) => {
+    if (count > 0) return notify('Esvazie a pasta antes de excluir (desarquive os torneios).', 'err')
+    if (!await confirm('Excluir esta pasta vazia?')) return
+    try { await api.delete(`/tournament-folders/${id}`); onReload(); notify('Pasta excluída.') }
+    catch (err) { notify(err.message, 'err') }
+  }
+
+  const assignFolder = async (name, category, folderId) => {
+    try {
+      await api.post('/tournaments/assign-folder', { name, category, folderId })
+      onReload(); notify(folderId ? 'Torneio movido!' : 'Torneio desarquivado.')
+    } catch (err) { notify(err.message, 'err') }
+  }
+
+  // ── Dentro de uma pasta ──────────────────────────────
+  const openFolder = folders.find(f => f.id === openFolderId)
+  if (openFolderId && openFolder) {
+    const events = groupArchivedEvents(rowsOf(openFolder.id))
+    return (
+      <>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={() => setOpenFolderId(null)}
+            className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors">
+            ← Pastas
+          </button>
+          <h2 className="text-xl font-black text-gray-700">📁 {openFolder.name}</h2>
+          <span className="text-sm text-gray-400">{events.length} torneio{events.length !== 1 ? 's' : ''}</span>
+        </div>
+        {events.length === 0
+          ? <Empty msg="Pasta vazia. Arquive um torneio na aba Torneios pra ele aparecer aqui." />
+          : events.map(ev => (
+              <ArchivedEventCard key={ev.key} event={ev} folders={folders} courts={courts}
+                onUnarchive={assignFolder} onMove={assignFolder} />
+            ))}
+        {confirmModal}
+      </>
+    )
+  }
+
+  // ── Grade de pastas (área de trabalho) ───────────────
+  return (
+    <>
+      <Card title="🔒 Arquivados">
+        <p className="text-sm text-gray-500 mb-4">
+          Organize seus torneios arquivados em pastas, como na área de trabalho do computador.
+          Tudo aqui fica <span className="font-semibold text-gray-700">salvo pra sempre</span> — mesmo que você apague as duplas depois.
+        </p>
+        <div className="flex gap-2 max-w-md">
+          <input value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createFolder() } }}
+            placeholder="Nome da nova pasta..." className="input flex-1 text-sm" />
+          <Btn color="green" onClick={createFolder} disabled={!newFolderName.trim()}>+ Nova pasta</Btn>
+        </div>
+      </Card>
+
+      {folders.length === 0 ? (
+        <Empty msg="Nenhuma pasta ainda. Crie a primeira acima." />
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {folders.map(f => {
+            const events = groupArchivedEvents(rowsOf(f.id))
+            const count  = events.length
+            if (renamingId === f.id) {
+              return (
+                <div key={f.id} className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-blue-300 bg-blue-50">
+                  <span className="text-5xl">📁</span>
+                  <input autoFocus value={renameDraft} onChange={e => setRenameDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); renameFolder(f.id) }
+                      if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
+                    }}
+                    onBlur={() => renameFolder(f.id)}
+                    className="input text-sm py-1 w-full text-center" />
+                </div>
+              )
+            }
+            return (
+              <div key={f.id} className="relative group">
+                <button onClick={() => setOpenFolderId(f.id)}
+                  className="w-full flex flex-col items-center gap-1.5 p-4 rounded-2xl border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                  <span className="text-5xl">📁</span>
+                  <span className="font-bold text-gray-700 text-sm text-center truncate w-full px-1">{f.name}</span>
+                  <span className="text-xs text-gray-400">{count} torneio{count !== 1 ? 's' : ''}</span>
+                </button>
+                <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => { setRenamingId(f.id); setRenameDraft(f.name) }} title="Renomear"
+                    className="w-6 h-6 rounded-md bg-white/90 border border-gray-200 text-gray-500 hover:text-blue-600 text-xs flex items-center justify-center">✏</button>
+                  <button onClick={() => deleteFolder(f.id, count)} title="Excluir pasta (só se vazia)"
+                    className="w-6 h-6 rounded-md bg-white/90 border border-gray-200 text-gray-400 hover:text-red-500 text-xs flex items-center justify-center">🗑</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {confirmModal}
+    </>
+  )
+}
+
+// ── ArchivedEventCard — evento arquivado, somente-leitura (congelado) ──
+function ArchivedEventCard({ event, folders, courts, onUnarchive, onMove }) {
+  const [open, setOpen] = useState(false)
+
+  const rows = [...event.rows].map(frozenRows).sort((a, b) =>
+    (a.group || 'zzz').localeCompare(b.group || 'zzz')
+  )
+  const isEvent = rows.some(r => r.group)
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200">
+      <div className="bg-blue-900 text-white px-5 py-3 flex items-center justify-between gap-3 rounded-t-2xl">
+        <div className="min-w-0">
+          <h3 className="text-lg font-black truncate">{event.name}</h3>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {event.category && (
+              <span className="bg-yellow-400 text-gray-900 text-xs font-black px-2 py-0.5 rounded-full uppercase">{event.category}</span>
+            )}
+            {isEvent && <span className="text-blue-300 text-xs">{rows.filter(r => r.group).length} grupos</span>}
+            <span className="text-blue-300 text-xs">🔒 congelado</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Btn color="gray" onClick={() => onUnarchive(event.name, event.category, null)} title="Voltar pras abas normais">📤 Desarquivar</Btn>
+          <ArchiveControl folders={folders} label="📁 Mover" heading="Mover para a pasta" title="Mover para outra pasta"
+            onArchive={(fid) => onMove(event.name, event.category, fid)} />
+          <button onClick={() => setOpen(o => !o)} className="text-white/60 hover:text-white text-xl font-bold w-8 text-center">
+            {open ? '▲' : '▼'}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="p-5 space-y-6">
+          {rows.map(row => {
+            const standings = calcStandings(row.entries, row.matches)
+            return (
+              <div key={row.id} className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest">
+                    {row.group ? `Grupo ${row.group}` : (isEvent ? 'Chave Final' : 'Partidas')}
+                  </span>
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+                {standings.length > 0 && (
+                  <StandingsTable standings={standings} totalEntries={row.entries.length} />
+                )}
+                {row.matches.length > 0 && (
+                  <div className="space-y-2">
+                    {row.matches.map(m => <ArchivedMatchRow key={m.id} match={m} courts={courts} />)}
+                  </div>
+                )}
+                {standings.length === 0 && row.matches.length === 0 && (
+                  <Empty msg="Sem partidas registradas." />
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   )
 }
 
-// ── FolderSection — pasta colapsável com os torneios arquivados ──
-function FolderSection({ folder, tournaments, teams, courts, onReload, notify, onUnarchive, onDelete }) {
-  const storageKey = `folder_open_${folder.id}`
-  const [open, setOpen] = useState(() => localStorage.getItem(storageKey) === 'true')
-  const { confirm, modal: confirmModal } = useConfirm()
-
-  const toggleOpen = (v) => { setOpen(v); localStorage.setItem(storageKey, String(v)) }
-
-  const handleDelete = async () => {
-    if (tournaments.length > 0) return notify('Só é possível excluir pastas vazias.', 'err')
-    if (!await confirm(`Excluir a pasta "${folder.name}"?`)) return
-    onDelete(folder.id)
-  }
+// ── ArchivedMatchRow — resultado congelado, somente-leitura ─────────
+function ArchivedMatchRow({ match, courts = [] }) {
+  const st    = STATUS_STYLE[match.status] || STATUS_STYLE.waiting
+  const nameA = match.teamA ? `${match.teamA.player1} / ${match.teamA.player2}` : (match.teamAName || 'A definir')
+  const nameB = match.teamB ? `${match.teamB.player1} / ${match.teamB.player2}` : (match.teamBName || 'A definir')
+  const winA  = match.winnerTeamId && match.winnerTeamId === match.teamAId
+  const winB  = match.winnerTeamId && match.winnerTeamId === match.teamBId
+  const roundLabel = match.round ? (ROUND_LABELS[match.round.toLowerCase()] || match.round) : ''
+  const courtName  = match.court?.name || courts.find(c => c.id === match.courtId)?.name || ''
 
   return (
-    <div className="bg-gray-50 rounded-2xl border border-gray-200">
-      <div className="flex items-center justify-between px-5 py-3">
-        <button type="button" onClick={() => toggleOpen(!open)} className="flex items-center gap-2 font-bold text-gray-700">
-          <span className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
-          📁 {folder.name}
-          <span className="text-xs font-normal text-gray-400">{tournaments.length} torneio{tournaments.length !== 1 ? 's' : ''}</span>
-        </button>
-        <button type="button" onClick={handleDelete} title="Excluir pasta"
-          className="text-gray-300 hover:text-red-500 text-xs px-1 transition-colors">🗑</button>
+    <div className={`rounded-xl border-l-4 px-4 py-2.5 flex flex-wrap items-center gap-3 bg-gray-50 ${st.border}`}>
+      <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${st.bg}`}>{st.label}</span>
+      {roundLabel && <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wide shrink-0">{roundLabel}</span>}
+      <div className="flex-1 min-w-0 text-sm">
+        <span className={`font-black ${winA ? 'text-yellow-700' : 'text-blue-700'}`}>{winA ? '🏆 ' : ''}{nameA}</span>
+        <span className="text-gray-400 mx-2 text-xs">VS</span>
+        <span className={`font-black ${winB ? 'text-yellow-700' : 'text-red-700'}`}>{winB ? '🏆 ' : ''}{nameB}</span>
+        {courtName && <span className="text-xs text-gray-400 ml-2">{courtName}</span>}
       </div>
-      {open && (
-        <div className="px-5 pb-5 space-y-4">
-          {tournaments.length === 0
-            ? <Empty msg="Pasta vazia." />
-            : <TorneiosList tournaments={tournaments} teams={teams} courts={courts} onReload={onReload} notify={notify}
-                archiveMode="unarchive" onArchive={onUnarchive} />}
+      {match.status === 'finished' && (
+        <div className="font-black text-xl shrink-0 flex items-center gap-2">
+          <span className="text-blue-700">{match.scoreA}</span>
+          <span className="text-gray-300">×</span>
+          <span className="text-red-700">{match.scoreB}</span>
         </div>
       )}
-      {confirmModal}
     </div>
   )
 }

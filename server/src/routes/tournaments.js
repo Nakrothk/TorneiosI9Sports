@@ -1,4 +1,5 @@
 const express = require('express')
+const { Prisma } = require('@prisma/client')
 const prisma  = require('../lib/prisma')
 
 const router = express.Router()
@@ -76,19 +77,38 @@ router.post('/create-event', async (req, res, next) => {
 // ── POST /tournaments/assign-folder ─────────────────────────────
 // Arquiva/desarquiva um evento inteiro (todos os grupos + chave final) de uma vez,
 // já que "evento" = todas as tournaments com mesmo name+category.
+//
+// Ao ARQUIVAR (folderId presente) tiramos um snapshot congelado de cada torneio
+// do evento — nomes das duplas, placares e partidas do jeito que estão agora.
+// A aba Arquivados renderiza a partir desse snapshot, então o arquivado fica
+// salvo pra sempre mesmo que as duplas sejam editadas ou excluídas depois.
+// Ao DESARQUIVAR limpamos o snapshot (volta a usar os dados vivos).
 router.post('/assign-folder', async (req, res, next) => {
   try {
     const { name, category, folderId } = req.body
     if (!name?.trim()) return res.status(400).json({ error: 'name é obrigatório' })
 
+    const where = { name: name.trim(), category: category?.trim() || '' }
+
     if (folderId) {
       const folder = await prisma.tournamentFolder.findUnique({ where: { id: folderId } })
       if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' })
+
+      const rows = await prisma.tournament.findMany({ where, include: tInclude })
+      for (const t of rows) {
+        // round-trip pra JSON puro (converte Date -> string, remove undefined)
+        const snapshot = JSON.parse(JSON.stringify({ entries: t.entries, matches: t.matches }))
+        await prisma.tournament.update({
+          where: { id: t.id },
+          data: { folderId, snapshot },
+        })
+      }
+      return res.json({ ok: true, archived: rows.length })
     }
 
     await prisma.tournament.updateMany({
-      where: { name: name.trim(), category: category?.trim() || '' },
-      data: { folderId: folderId || null },
+      where,
+      data: { folderId: null, snapshot: Prisma.DbNull },
     })
     res.json({ ok: true })
   } catch (err) { next(err) }
