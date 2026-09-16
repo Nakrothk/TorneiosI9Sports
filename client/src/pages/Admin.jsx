@@ -332,8 +332,9 @@ function printEvent(ev) {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:16px}
+    .print-hd{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
     h1{font-size:18px;font-weight:900;margin-bottom:2px}
-    .cat{font-size:12px;color:#555;margin-bottom:14px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+    .cat{font-size:12px;color:#555;font-weight:700;text-transform:uppercase;letter-spacing:1px}
     .groups{display:grid;gap:14px;margin-bottom:18px}
     .box{border:2px solid #222;border-radius:6px;overflow:hidden;break-inside:avoid}
     .box-hd{background:#1e293b;color:#fff;padding:5px 10px;font-weight:900;font-size:12px;text-transform:uppercase;letter-spacing:1px}
@@ -351,11 +352,17 @@ function printEvent(ev) {
     .win{font-weight:900}
     .section-title{font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;padding-bottom:4px;border-bottom:2px solid #1e293b}
     .bracket-wrap{margin-bottom:18px}
+    .logo{height:75px;width:auto;flex-shrink:0}
     @media print{@page{margin:1cm;size:A4}body{padding:0}}
   </style>
 </head><body>
-  <h1>${esc(ev.name)}</h1>
-  ${ev.category ? `<p class="cat">${esc(ev.category)}</p>` : ''}
+  <div class="print-hd">
+    <div>
+      <h1>${esc(ev.name)}</h1>
+      ${ev.category ? `<p class="cat">${esc(ev.category)}</p>` : ''}
+    </div>
+    <img class="logo" src="${window.location.origin}/logo-i9.png" alt="i9 Beach Sports">
+  </div>
   ${groupsHTML}
   ${standaloneHTML}
   ${previewHTML}
@@ -408,7 +415,8 @@ function printAllMatches(matches) {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:16px}
-    h1{font-size:16px;font-weight:900;margin-bottom:12px}
+    .print-hd{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
+    h1{font-size:16px;font-weight:900}
     table{width:100%;border-collapse:collapse}
     tr{border-bottom:1px solid #e5e7eb}
     tr:last-child{border-bottom:none}
@@ -421,10 +429,14 @@ function printAllMatches(matches) {
     .sc{text-align:center;font-weight:900;white-space:nowrap;padding:4px 10px;color:#374151}
     .done{color:#111}
     .win{font-weight:900}
+    .logo{height:75px;width:auto;flex-shrink:0}
     @media print{@page{margin:1cm;size:A4}body{padding:0}}
   </style>
 </head><body>
-  <h1>📋 Todos os Jogos</h1>
+  <div class="print-hd">
+    <h1>📋 Todos os Jogos</h1>
+    <img class="logo" src="${window.location.origin}/logo-i9.png" alt="i9 Beach Sports">
+  </div>
   <table>${rows}</table>
   <script>window.onload=()=>{window.print()}<\/script>
 </body></html>`
@@ -604,7 +616,10 @@ export default function Admin() {
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-blue-900 text-white py-4 px-6 flex items-center justify-between shadow-md">
-        <h1 className="text-2xl font-black tracking-tight">🎾 Torneios i9</h1>
+        <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
+          <img src="/logo-i9-icon.png" alt="i9" className="h-9 w-auto" />
+          Torneios
+        </h1>
         <div className="flex items-center gap-3">
           <a href="/tv" target="_blank" rel="noopener noreferrer"
             className="text-sm bg-yellow-400 text-gray-900 font-bold px-4 py-1.5 rounded-lg hover:bg-yellow-300 transition-colors">
@@ -3627,9 +3642,12 @@ function printFfaMatches(tournament, matches, teamColor) {
       @media print { body { padding: 4px; } }
     </style>
   </head><body>
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;border-bottom:2px solid #1e293b;padding-bottom:4px">
-      <b style="font-size:15px">${tournament.name}</b>
-      <span style="font-size:10px;color:#888">${done}/${total} finalizadas · ${new Date().toLocaleDateString('pt-BR')}</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;border-bottom:2px solid #1e293b;padding-bottom:4px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <b style="font-size:15px">${tournament.name}</b>
+        <span style="font-size:10px;color:#888">${done}/${total} finalizadas · ${new Date().toLocaleDateString('pt-BR')}</span>
+      </div>
+      <img src="${window.location.origin}/logo-i9.png" alt="i9 Beach Sports" style="height:75px;width:auto;flex-shrink:0">
     </div>
     ${rows}
   </body></html>`
