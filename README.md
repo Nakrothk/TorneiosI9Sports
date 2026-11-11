@@ -1,6 +1,6 @@
 # 🎾 Beach Tennis — Gerenciador de Partidas
 
-Sistema web para gerenciar e exibir partidas de Beach Tennis em tempo real.
+Sistema web para montar torneios de Beach Tennis (grupos, chaves e Copa do Mundo) e chamar as partidas na TV.
 
 ---
 
@@ -10,38 +10,55 @@ Sistema web para gerenciar e exibir partidas de Beach Tennis em tempo real.
 |-----------|-------------------------------------|
 | Frontend  | React 18 + Vite + TailwindCSS       |
 | Backend   | Node.js + Express                   |
+| Auth      | JWT (`jsonwebtoken`)                |
 | ORM       | Prisma                              |
 | Banco     | PostgreSQL (Neon)                   |
-| Deploy FE | Vercel                              |
-| Deploy BE | Qualquer host Node (Railway, Render, VPS) |
+| Deploy    | Railway (monorepo: o Express serve o build do client) |
 
 ---
 
 ## Estrutura do Projeto
 
 ```
-ChamadaTorneio/
+TorneiosI9Sports/
+├── package.json             # Scripts raiz (build/start do monorepo)
+├── railway.json             # Configuração de deploy Railway (monorepo)
+├── .github/workflows/
+│   └── db-backup.yml        # Backup diário do banco (pg_dump)
 ├── client/                  # Frontend React + Vite
+│   ├── public/              # Logos i9 (cabeçalho e impressões)
 │   ├── src/
 │   │   ├── pages/
-│   │   │   ├── Admin.jsx    # Painel de gerenciamento
-│   │   │   └── TV.jsx       # Tela de exibição (TV/placar)
-│   │   ├── api.js           # Cliente HTTP
+│   │   │   ├── Admin.jsx    # Painel de gerenciamento (abas)
+│   │   │   ├── Login.jsx    # Login do admin
+│   │   │   ├── TV.jsx       # Tela de chamada das partidas (TV)
+│   │   │   └── Placar.jsx   # Placar da Copa do Mundo (celular)
+│   │   ├── api.js           # Cliente HTTP (envia o token JWT)
 │   │   ├── App.jsx          # Roteamento
 │   │   └── main.jsx
-│   ├── vercel.json          # Configuração de deploy Vercel
+│   ├── vercel.json          # Configuração de deploy Vercel (alternativa)
 │   └── package.json
 └── server/                  # Backend Node.js
     ├── prisma/
     │   ├── schema.prisma    # Schema do banco
     │   └── seed.js          # Dados de exemplo
+    ├── scripts/             # Scripts avulsos (ex.: seed-teams.js)
     ├── src/
-    │   ├── lib/prisma.js    # Cliente Prisma singleton
+    │   ├── lib/
+    │   │   ├── prisma.js    # Cliente Prisma singleton
+    │   │   └── jwtSecret.js # Segredo do JWT
+    │   ├── middleware/
+    │   │   └── auth.js      # Exige token, exceto nas rotas públicas
     │   ├── routes/
+    │   │   ├── auth.js
     │   │   ├── teams.js
     │   │   ├── courts.js
-    │   │   └── matches.js
+    │   │   ├── matches.js
+    │   │   ├── tournaments.js
+    │   │   ├── tournamentFolders.js
+    │   │   └── import.js
     │   └── index.js         # Entry point Express
+    ├── railway.json         # Deploy só do server (Railway)
     └── package.json
 ```
 
@@ -49,7 +66,7 @@ ChamadaTorneio/
 
 ## Pré-requisitos
 
-- Node.js 18+
+- Node.js 20+
 - npm ou yarn
 - Banco PostgreSQL (recomendado: [Neon](https://neon.tech) — grátis)
 
@@ -71,6 +88,7 @@ cp .env.example .env
 npx prisma db push
 
 # 4. (Opcional) Popular com dados de exemplo
+#    Atenção: apaga partidas, duplas e quadras existentes
 node prisma/seed.js
 
 # 5. Rodar o servidor
@@ -79,6 +97,8 @@ npm start         # produção
 ```
 
 O servidor sobe em **http://localhost:3001**.
+
+Outros scripts do server: `npm run db:studio` (Prisma Studio) e `npm run db:reset` (recria o banco do zero e roda o seed).
 
 ---
 
@@ -103,6 +123,8 @@ npm run build
 
 O frontend sobe em **http://localhost:5173**.
 
+Da raiz do repositório também dá para usar `npm run dev:server` e `npm run dev:client`.
+
 ---
 
 ## Variáveis de Ambiente
@@ -111,13 +133,14 @@ O frontend sobe em **http://localhost:5173**.
 ```env
 DATABASE_URL="postgresql://user:password@host/beach_tennis?sslmode=require"
 PORT=3001
+JWT_SECRET="troque-em-producao"   # opcional; sem ele o server usa um segredo fixo do código
 ```
 
 ### client/.env
 ```env
 VITE_API_URL=http://localhost:3001
 ```
-> Em produção, aponte para a URL do seu servidor Node deployado.
+> Em produção no Railway, deixe `VITE_API_URL` sem definir: o client chama a API na mesma origem. Só defina se o frontend for hospedado separado do backend (ex.: Vercel).
 
 ---
 
@@ -132,10 +155,14 @@ VITE_API_URL=http://localhost:3001
 
 ## Páginas
 
-| Rota     | Descrição                                      |
-|----------|------------------------------------------------|
-| `/admin` | Painel de gerenciamento (quadras, duplas, partidas) |
-| `/tv`    | Tela de placar em tempo real (atualiza a cada 3s) |
+| Rota      | Descrição                                      |
+|-----------|------------------------------------------------|
+| `/login`  | Login do admin (o token JWT vale 7 dias)       |
+| `/admin`  | Painel de gerenciamento — exige login. Abas: Chaves, Torneios, Copa do Mundo, Duplas, Quadras, Chamada de Jogos, Arquivados |
+| `/tv`     | Tela de chamada: partida chamada (com quadra) ou próxima partida, com som (atualiza a cada 3s) |
+| `/placar` | Placar dos times da Copa do Mundo para celular (atualiza a cada 3s) |
+
+`/` redireciona para `/admin`.
 
 ---
 
@@ -143,11 +170,25 @@ VITE_API_URL=http://localhost:3001
 
 Base URL: `http://localhost:3001`
 
+Todas as rotas exigem o header `Authorization: Bearer <token>`, exceto `POST /auth/login`, `GET /health`, `GET /matches/tv` e `GET /tournaments` (usadas pela TV e pelo `/placar`). A lista de rotas públicas fica em `server/src/middleware/auth.js`.
+
+### Auth
+
+```
+POST   /auth/login     Retorna { token } (JWT, 7 dias)
+GET    /health         Healthcheck
+```
+
 ### Times (Duplas)
 
 ```
 GET    /teams          Lista todas as duplas
-POST   /teams          Cria uma dupla
+POST   /teams          Cria uma dupla (player1, player2 e category obrigatórios)
+PUT    /teams/:id      Edita jogadores, categoria ou cor do time
+DELETE /teams/:id      Exclui uma dupla
+DELETE /teams          Exclui todas as duplas (desvincula das partidas e remove inscrições)
+GET    /teams/export   Exporta as duplas em .xlsx
+POST   /teams/import   Importa duplas de .xlsx (multipart, campo "file")
 ```
 
 ### Quadras
@@ -155,27 +196,89 @@ POST   /teams          Cria uma dupla
 ```
 GET    /courts         Lista todas as quadras
 POST   /courts         Cria uma quadra
+PUT    /courts/:id     Renomeia uma quadra
+DELETE /courts/:id     Exclui uma quadra
 ```
 
 ### Partidas
 
 ```
-GET    /matches            Lista todas as partidas
-GET    /matches/active     Lista partidas em andamento (status: playing)
-POST   /matches            Cria uma partida
-POST   /matches/:id/start  Inicia a partida (waiting → playing)
-POST   /matches/:id/finish Finaliza a partida (playing → finished)
-POST   /matches/:id/score  Adiciona ponto a uma dupla
-POST   /matches/:id/undo   Desfaz o último ponto
+GET    /matches               Lista todas as partidas
+GET    /matches/active        Lista partidas em andamento (status: playing)
+GET    /matches/current       Última partida chamada
+GET    /matches/tv            { called, next } para a tela da TV
+POST   /matches               Cria uma partida (duplas por id ou por nome livre)
+POST   /matches/:id/call      Chama a partida na TV
+POST   /matches/:id/mark-next Marca/desmarca como próxima (só uma por vez)
+POST   /matches/:id/start     Inicia a partida (waiting → playing)
+POST   /matches/:id/finish    Finaliza (aceita scoreA/scoreB) e avança o vencedor na chave
+POST   /matches/:id/score     Adiciona ponto a uma dupla (só em playing)
+POST   /matches/:id/undo      Desfaz o último ponto (só em playing)
+POST   /matches/:id/edit      Corrige o placar (marca como finalizada e ajusta o vencedor na chave)
+POST   /matches/:id/court     Troca a quadra
+POST   /matches/:id/category  Troca a categoria
+POST   /matches/:id/set-teams Troca as duplas
+POST   /matches/:id/set-time  Define o horário (scheduledTime)
+PUT    /matches/:id/position  Define a ordem (position)
+DELETE /matches/:id           Exclui a partida
+```
+
+### Torneios
+
+Um evento é o conjunto de torneios com o mesmo `name` + `category` (um por grupo, mais a chave final).
+
+```
+GET    /tournaments                          Lista torneios com duplas e partidas
+POST   /tournaments                          Cria um torneio (type: bracket | ffa)
+POST   /tournaments/create-event             Cria um evento com 1 a 6 grupos (A–F)
+POST   /tournaments/generate-bracket         Gera a chave final a partir da classificação dos grupos
+POST   /tournaments/assign-folder            Arquiva (com snapshot) ou desarquiva um evento inteiro
+POST   /tournaments/:id/teams                Inscreve uma dupla
+DELETE /tournaments/:id/teams/:teamId        Remove uma dupla
+POST   /tournaments/:id/generate             Gera as partidas do grupo (todos contra todos)
+DELETE /tournaments/:id/matches              Apaga só as partidas do torneio
+DELETE /tournaments/:id                      Exclui o torneio
+PUT    /tournaments/:id/teams/:teamId/color  Define a cor do time da dupla (Copa do Mundo)
+POST   /tournaments/:id/ffa-batch-teams      Copa do Mundo: inscreve várias duplas num time
+DELETE /tournaments/:id/ffa-teams/:teamId    Copa do Mundo: remove uma dupla
+POST   /tournaments/:id/ffa-groups           Copa do Mundo: cria um grupo de 4 duplas (uma por cor)
+POST   /tournaments/:id/ffa-auto-generate    Copa do Mundo: gera os confrontos entre cores
+GET    /tournaments/:id/ffa-standings        Copa do Mundo: classificação por cor
+POST   /tournaments/:id/ffa-finals           Copa do Mundo: gera semis/final/3º lugar
+```
+
+### Pastas (Arquivados)
+
+```
+GET    /tournament-folders       Lista as pastas
+POST   /tournament-folders       Cria uma pasta
+PUT    /tournament-folders/:id   Renomeia
+DELETE /tournament-folders/:id   Exclui (só se estiver vazia)
+```
+
+### Importação de partidas
+
+```
+GET    /import/template   Baixa a planilha modelo (.xlsx)
+POST   /import            Importa partidas de .xlsx (multipart, campo "file")
 ```
 
 ---
 
 ## Exemplos de Requisições
 
+### Login
+```bash
+curl -X POST http://localhost:3001/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "EMAIL_ADMIN", "password": "SENHA_ADMIN"}'
+# Guarde o token retornado: TOKEN=...
+```
+
 ### Criar quadra
 ```bash
 curl -X POST http://localhost:3001/courts \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "Quadra 1"}'
 ```
@@ -183,25 +286,29 @@ curl -X POST http://localhost:3001/courts \
 ### Criar dupla
 ```bash
 curl -X POST http://localhost:3001/teams \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"player1": "João Silva", "player2": "Pedro Costa"}'
+  -d '{"player1": "João Silva", "player2": "Pedro Costa", "category": "Masculina A"}'
 ```
 
 ### Criar partida
 ```bash
 curl -X POST http://localhost:3001/matches \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"teamAId": "ID_DUPLA_A", "teamBId": "ID_DUPLA_B", "courtId": "ID_QUADRA"}'
 ```
 
 ### Iniciar partida
 ```bash
-curl -X POST http://localhost:3001/matches/ID_PARTIDA/start
+curl -X POST http://localhost:3001/matches/ID_PARTIDA/start \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Adicionar ponto (Dupla A)
 ```bash
 curl -X POST http://localhost:3001/matches/ID_PARTIDA/score \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"team": "A"}'
 ```
@@ -209,30 +316,45 @@ curl -X POST http://localhost:3001/matches/ID_PARTIDA/score \
 ### Adicionar ponto (Dupla B)
 ```bash
 curl -X POST http://localhost:3001/matches/ID_PARTIDA/score \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"team": "B"}'
 ```
 
 ### Desfazer último ponto
 ```bash
-curl -X POST http://localhost:3001/matches/ID_PARTIDA/undo
+curl -X POST http://localhost:3001/matches/ID_PARTIDA/undo \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Finalizar partida
 ```bash
-curl -X POST http://localhost:3001/matches/ID_PARTIDA/finish
+curl -X POST http://localhost:3001/matches/ID_PARTIDA/finish \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Ver partidas ativas
 ```bash
-curl http://localhost:3001/matches/active
+curl http://localhost:3001/matches/active \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
 ## Deploy
 
-### Frontend → Vercel
+### Railway (monorepo)
+
+O `railway.json` da raiz faz o deploy de tudo num serviço só:
+
+- **Build:** `npm install` + `npm run build` do client e `npm install` + `npx prisma generate` do server.
+- **Start:** `cd server && npx prisma db push && node src/index.js` — o schema é aplicado no banco a cada deploy. Se uma mudança no schema causar perda de dados, o `db push` falha e o serviço não sobe.
+- **Healthcheck:** `GET /health`.
+- O Express serve `client/dist` quando a pasta existe, então frontend e API ficam na mesma origem.
+
+Defina `DATABASE_URL` e `JWT_SECRET` nas variáveis de ambiente do Railway (`PORT` é fornecida pela plataforma).
+
+### Alternativa — Frontend na Vercel
 
 ```bash
 cd client
@@ -243,57 +365,40 @@ npm run build
 
 O arquivo `client/vercel.json` já configura o roteamento para o React Router.
 
-### Backend → Railway / Render / VPS
+### Backup do banco
 
-```bash
-cd server
-npm install
-npx prisma db push
-npm start
-```
-
-Defina `DATABASE_URL` e `PORT` nas variáveis de ambiente da plataforma.
+O workflow `.github/workflows/db-backup.yml` roda `pg_dump` todo dia às 03:00 (Brasília) e guarda o dump como artifact por 30 dias. Precisa do secret `DATABASE_URL` no repositório; também pode ser rodado manualmente pela aba Actions.
 
 ---
 
 ## Schema do Banco
 
-```prisma
-model Team {
-  id       String  @id @default(cuid())
-  player1  String
-  player2  String
-}
+A fonte da verdade é `server/prisma/schema.prisma`. Resumo dos models:
 
-model Court {
-  id   String @id @default(cuid())
-  name String
-}
-
-model Match {
-  id         String   @id @default(cuid())
-  teamAId    String
-  teamBId    String
-  courtId    String?
-  scoreA     Int      @default(0)
-  scoreB     Int      @default(0)
-  prevScoreA Int      @default(0)   // para suporte a undo
-  prevScoreB Int      @default(0)
-  status     String   @default("waiting")  // waiting | playing | finished
-  createdAt  DateTime @default(now())
-}
-```
+| Model              | Papel |
+|--------------------|-------|
+| `Team`             | Dupla (`player1`, `player2`, `category`, `colorTeam` da Copa do Mundo) |
+| `Court`            | Quadra |
+| `Tournament`       | Um grupo ou a chave final de um evento (`name` + `category`). `group` vazio = chave final (ou torneio sem grupos); `type` = `bracket` ou `ffa` (Copa do Mundo); ao arquivar recebe `folderId` e um `snapshot` congelado |
+| `TournamentFolder` | Pasta da aba Arquivados |
+| `TournamentEntry`  | Inscrição de uma dupla num torneio (`seed`, `colorTeam`) |
+| `Match`            | Partida. `status`: `waiting` → `playing` → `finished`; `nextMatchId` liga à próxima fase da chave; `teamAName`/`teamBName` para chamadas avulsas sem dupla cadastrada; `calledAt`/`isNext` controlam a TV |
 
 ---
 
 ## Funcionalidades
 
-- [x] Criar e listar quadras
-- [x] Criar e listar duplas
-- [x] Criar partidas e atribuir a quadras
-- [x] Iniciar / Finalizar partidas
-- [x] Pontuar (+ 1 ponto por dupla)
-- [x] Desfazer último ponto (undo)
-- [x] Tela TV com atualização automática (3s, sem WebSocket)
-- [x] Exibição por quadra com status em tempo real
-- [x] Layout otimizado para resolução 1920×1080
+- [x] Login do admin com JWT
+- [x] Criar, editar e excluir quadras e duplas (com categoria)
+- [x] Importar/exportar duplas em planilha .xlsx
+- [x] Eventos com grupos (todos contra todos) e chave final gerada pela classificação
+- [x] Copa do Mundo: times por cor (Verde, Amarelo, Azul, Branco), classificação e finais
+- [x] Iniciar / Finalizar partidas, com avanço automático do vencedor na chave
+- [x] Pontuar (+ 1 ponto por dupla) e desfazer último ponto (undo)
+- [x] Corrigir o placar de partidas já finalizadas
+- [x] Horário (dia + hora) por partida
+- [x] Chamada de jogos na TV com som, próxima partida e chamadas avulsas (atualização a cada 3s, sem WebSocket)
+- [x] Impressão das chaves de uma categoria (grupos, previsão final e chave final) em A4 retrato, com no máximo 2 caixas por linha
+- [x] Arquivados: pastas com cópia congelada dos torneios
+- [x] Abas do admin podem ser ocultadas (preferência salva no navegador)
+- [x] Layout da TV otimizado para resolução 1920×1080
