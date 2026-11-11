@@ -346,8 +346,8 @@ function printEvent(ev) {
     .tm{text-align:center;font-weight:700;color:#6b7280;white-space:nowrap;padding:5px 6px;font-size:10px;width:44px}
     .rd{text-align:left;font-weight:700;color:#7c3aed;white-space:nowrap;padding:5px 6px;font-size:9px;width:60px}
     .dy{color:#7c3aed;font-weight:900}
-    .ta{text-align:right;color:#1d4ed8;max-width:140px}
-    .tb{text-align:left;color:#dc2626;max-width:140px}
+    .ta{text-align:right;color:#1d4ed8;max-width:140px;overflow-wrap:anywhere}
+    .tb{text-align:left;color:#dc2626;max-width:140px;overflow-wrap:anywhere}
     .sc{text-align:center;font-weight:900;white-space:nowrap;padding:5px 12px;color:#374151}
     .done{color:#111}
     .win{font-weight:900}
