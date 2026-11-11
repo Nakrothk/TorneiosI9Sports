@@ -184,10 +184,11 @@ function printEvent(ev) {
     </tr>`
   }
 
-  const groupCols = ev.groups.length <= 2 ? 2 : ev.groups.length <= 4 ? 2 : 3
+  // A4 retrato só comporta 2 caixas lado a lado; com 3, a coluna da dupla B fica cortada.
+  const MAX_PRINT_COLS = 2
 
   const groupsHTML = ev.groups.length > 0 ? `
-    <div class="groups" style="grid-template-columns:repeat(${groupCols},1fr)">
+    <div class="groups" style="grid-template-columns:repeat(${MAX_PRINT_COLS},1fr)">
       ${ev.groups.map(t => {
         const sorted = [...t.matches].sort((a,b) => (a.position||0)-(b.position||0))
         const showRound = sorted.some(m => m.round)
@@ -203,7 +204,7 @@ function printEvent(ev) {
     const rounds = groupByRound(ev.standalone.matches)
     const hasRounds = rounds.some(r => r.round)
     if (hasRounds) {
-      const maxCols = Math.min(rounds.length || 1, 2)
+      const maxCols = Math.min(rounds.length || 1, MAX_PRINT_COLS)
       return `<div class="bracket-wrap">
         <div class="groups" style="grid-template-columns:repeat(${maxCols},1fr)">
           ${rounds.map(({ round, matches }) => `
@@ -316,7 +317,7 @@ function printEvent(ev) {
     const rounds = groupByRound(ev.bracket.matches)
     return `<div class="bracket-wrap">
       <div class="section-title">🏆 Chave Final</div>
-      <div class="groups" style="grid-template-columns:repeat(${rounds.length||1},1fr)">
+      <div class="groups" style="grid-template-columns:repeat(${Math.min(rounds.length || 1, MAX_PRINT_COLS)},1fr)">
         ${rounds.map(({ round, matches }) => `
           <div class="box">
             <div class="box-hd">${esc(ROUND_LABELS[round?.toLowerCase()] ?? round)}</div>
@@ -345,8 +346,8 @@ function printEvent(ev) {
     .tm{text-align:center;font-weight:700;color:#6b7280;white-space:nowrap;padding:5px 6px;font-size:10px;width:44px}
     .rd{text-align:left;font-weight:700;color:#7c3aed;white-space:nowrap;padding:5px 6px;font-size:9px;width:60px}
     .dy{color:#7c3aed;font-weight:900}
-    .ta{text-align:right;color:#1d4ed8;max-width:140px}
-    .tb{text-align:left;color:#dc2626;max-width:140px}
+    .ta{text-align:right;color:#1d4ed8;max-width:140px;overflow-wrap:anywhere}
+    .tb{text-align:left;color:#dc2626;max-width:140px;overflow-wrap:anywhere}
     .sc{text-align:center;font-weight:900;white-space:nowrap;padding:5px 12px;color:#374151}
     .done{color:#111}
     .win{font-weight:900}
