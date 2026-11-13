@@ -47,6 +47,7 @@ TorneiosI9Sports/
     │   ├── lib/
     │   │   ├── prisma.js    # Cliente Prisma singleton
     │   │   ├── jwtSecret.js # Segredo do JWT
+    │   │   ├── bracket.js   # Avanço de vencedor/perdedor para a partida seguinte da chave
     │   │   └── standings.js # Classificação dos grupos (critério de desempate)
     │   ├── middleware/
     │   │   └── auth.js      # Exige token, exceto nas rotas públicas
@@ -218,7 +219,7 @@ POST   /matches/:id/start     Inicia a partida (waiting → playing)
 POST   /matches/:id/finish    Finaliza (aceita scoreA/scoreB) e avança o vencedor na chave (e o perdedor da semi para o 3º lugar)
 POST   /matches/:id/score     Adiciona ponto a uma dupla (só em playing)
 POST   /matches/:id/undo      Desfaz o último ponto (só em playing)
-POST   /matches/:id/edit      Corrige o placar (marca como finalizada e ajusta vencedor e perdedor na chave, se a partida seguinte não foi finalizada)
+POST   /matches/:id/edit      Corrige o placar (marca como finalizada e ajusta vencedor e perdedor na chave, se nenhuma das partidas seguintes foi finalizada)
 POST   /matches/:id/court     Troca a quadra
 POST   /matches/:id/category  Troca a categoria
 POST   /matches/:id/set-teams Troca as duplas
