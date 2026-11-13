@@ -46,7 +46,9 @@ TorneiosI9Sports/
     ├── src/
     │   ├── lib/
     │   │   ├── prisma.js    # Cliente Prisma singleton
-    │   │   └── jwtSecret.js # Segredo do JWT
+    │   │   ├── jwtSecret.js # Segredo do JWT
+    │   │   ├── bracket.js   # Avanço de vencedor/perdedor para a partida seguinte da chave
+    │   │   └── standings.js # Classificação dos grupos (critério de desempate)
     │   ├── middleware/
     │   │   └── auth.js      # Exige token, exceto nas rotas públicas
     │   ├── routes/
@@ -58,6 +60,7 @@ TorneiosI9Sports/
     │   │   ├── tournamentFolders.js
     │   │   └── import.js
     │   └── index.js         # Entry point Express
+    ├── test/                # Testes (node --test)
     ├── railway.json         # Deploy só do server (Railway)
     └── package.json
 ```
@@ -99,6 +102,8 @@ npm start         # produção
 O servidor sobe em **http://localhost:3001**.
 
 Outros scripts do server: `npm run db:studio` (Prisma Studio) e `npm run db:reset` (recria o banco do zero e roda o seed).
+
+Testes do server: `npm test` (roda `node --test "test/**/*.test.js"`, sem banco). O glob é explícito para o `node --test` não executar `scripts/test-write.js`, que grava no banco.
 
 ---
 
@@ -211,10 +216,10 @@ POST   /matches               Cria uma partida (duplas por id ou por nome livre)
 POST   /matches/:id/call      Chama a partida na TV
 POST   /matches/:id/mark-next Marca/desmarca como próxima (só uma por vez)
 POST   /matches/:id/start     Inicia a partida (waiting → playing)
-POST   /matches/:id/finish    Finaliza (aceita scoreA/scoreB) e avança o vencedor na chave
+POST   /matches/:id/finish    Finaliza (aceita scoreA/scoreB) e avança o vencedor na chave (e o perdedor da semi para o 3º lugar)
 POST   /matches/:id/score     Adiciona ponto a uma dupla (só em playing)
 POST   /matches/:id/undo      Desfaz o último ponto (só em playing)
-POST   /matches/:id/edit      Corrige o placar (marca como finalizada e ajusta o vencedor na chave)
+POST   /matches/:id/edit      Corrige o placar (marca como finalizada e ajusta vencedor e perdedor na chave, se nenhuma das partidas seguintes foi finalizada)
 POST   /matches/:id/court     Troca a quadra
 POST   /matches/:id/category  Troca a categoria
 POST   /matches/:id/set-teams Troca as duplas
@@ -227,11 +232,13 @@ DELETE /matches/:id           Exclui a partida
 
 Um evento é o conjunto de torneios com o mesmo `name` + `category` (um por grupo, mais a chave final).
 
+Critério de classificação nos grupos e entre grupos (ex.: com 3 grupos, os 2 melhores classificados vão direto para a semi): vitórias → saldo de games → games pró. A coluna P (pontos) é só exibida, não ordena. O server usa `server/src/lib/standings.js`; o client repete o mesmo critério em `byStandingCriteria` (`client/src/pages/Admin.jsx`) na classificação e na Previsão Final — mude os dois juntos.
+
 ```
 GET    /tournaments                          Lista torneios com duplas e partidas
 POST   /tournaments                          Cria um torneio (type: bracket | ffa)
 POST   /tournaments/create-event             Cria um evento com 1 a 6 grupos (A–F)
-POST   /tournaments/generate-bracket         Gera a chave final a partir da classificação dos grupos
+POST   /tournaments/generate-bracket         Gera a chave final a partir da classificação dos grupos, com disputa de 3º lugar
 POST   /tournaments/assign-folder            Arquiva (com snapshot) ou desarquiva um evento inteiro
 POST   /tournaments/:id/teams                Inscreve uma dupla
 DELETE /tournaments/:id/teams/:teamId        Remove uma dupla
@@ -382,7 +389,7 @@ A fonte da verdade é `server/prisma/schema.prisma`. Resumo dos models:
 | `Tournament`       | Um grupo ou a chave final de um evento (`name` + `category`). `group` vazio = chave final (ou torneio sem grupos); `type` = `bracket` ou `ffa` (Copa do Mundo); ao arquivar recebe `folderId` e um `snapshot` congelado |
 | `TournamentFolder` | Pasta da aba Arquivados |
 | `TournamentEntry`  | Inscrição de uma dupla num torneio (`seed`, `colorTeam`) |
-| `Match`            | Partida. `status`: `waiting` → `playing` → `finished`; `nextMatchId` liga à próxima fase da chave; `teamAName`/`teamBName` para chamadas avulsas sem dupla cadastrada; `calledAt`/`isNext` controlam a TV |
+| `Match`            | Partida. `status`: `waiting` → `playing` → `finished`; `nextMatchId` liga o vencedor à próxima fase da chave e `loserNextMatchId` liga o perdedor da semi à disputa de 3º lugar (`round: 'terceiro lugar'`); `teamAName`/`teamBName` para chamadas avulsas sem dupla cadastrada; `calledAt`/`isNext` controlam a TV |
 
 ---
 
@@ -391,9 +398,9 @@ A fonte da verdade é `server/prisma/schema.prisma`. Resumo dos models:
 - [x] Login do admin com JWT
 - [x] Criar, editar e excluir quadras e duplas (com categoria)
 - [x] Importar/exportar duplas em planilha .xlsx
-- [x] Eventos com grupos (todos contra todos) e chave final gerada pela classificação
+- [x] Eventos com grupos (todos contra todos) e chave final gerada pela classificação (vitórias → saldo → games pró), com disputa de 3º lugar
 - [x] Copa do Mundo: times por cor (Verde, Amarelo, Azul, Branco), classificação e finais
-- [x] Iniciar / Finalizar partidas, com avanço automático do vencedor na chave
+- [x] Iniciar / Finalizar partidas, com avanço automático do vencedor na chave (e do perdedor da semi para o 3º lugar)
 - [x] Pontuar (+ 1 ponto por dupla) e desfazer último ponto (undo)
 - [x] Corrigir o placar de partidas já finalizadas
 - [x] Horário (dia + hora) por partida

@@ -60,33 +60,37 @@ model TournamentEntry {
 }
 
 model Match {
-  id           String      @id @default(cuid())
-  teamAId      String?
-  teamBId      String?
-  teamA        Team?       @relation("TeamA", fields: [teamAId], references: [id])
-  teamB        Team?       @relation("TeamB", fields: [teamBId], references: [id])
-  teamAName    String      @default("")
-  teamBName    String      @default("")
-  courtId      String?
-  court        Court?      @relation(fields: [courtId], references: [id])
-  category     String      @default("")
-  round        String      @default("")
-  position     Int         @default(0)
-  nextMatchId  String?
-  nextMatch    Match?      @relation("BracketNext", fields: [nextMatchId], references: [id])
-  prevMatches  Match[]     @relation("BracketNext")
-  winnerTeamId String?
-  winnerTeam   Team?       @relation("Winner", fields: [winnerTeamId], references: [id])
-  tournamentId String?
-  tournament   Tournament? @relation(fields: [tournamentId], references: [id])
-  scoreA       Int         @default(0)
-  scoreB       Int         @default(0)
-  prevScoreA   Int         @default(0)
-  prevScoreB   Int         @default(0)
-  status       String      @default("waiting")
-  isNext        Boolean     @default(false)
-  scheduledTime String      @default("")
-  calledAt      DateTime?
-  quickCall     Boolean     @default(false)
-  createdAt     DateTime    @default(now())
+  id               String      @id @default(cuid())
+  teamAId          String?
+  teamBId          String?
+  teamA            Team?       @relation("TeamA", fields: [teamAId], references: [id])
+  teamB            Team?       @relation("TeamB", fields: [teamBId], references: [id])
+  teamAName        String      @default("")
+  teamBName        String      @default("")
+  courtId          String?
+  court            Court?      @relation(fields: [courtId], references: [id])
+  category         String      @default("")
+  round            String      @default("")
+  position         Int         @default(0)
+  nextMatchId      String?
+  nextMatch        Match?      @relation("BracketNext", fields: [nextMatchId], references: [id])
+  prevMatches      Match[]     @relation("BracketNext")
+  // Para onde vai o perdedor (semi → disputa de 3º lugar)
+  loserNextMatchId String?
+  loserNextMatch   Match?      @relation("BracketLoserNext", fields: [loserNextMatchId], references: [id])
+  prevLoserMatches Match[]     @relation("BracketLoserNext")
+  winnerTeamId     String?
+  winnerTeam       Team?       @relation("Winner", fields: [winnerTeamId], references: [id])
+  tournamentId     String?
+  tournament       Tournament? @relation(fields: [tournamentId], references: [id])
+  scoreA           Int         @default(0)
+  scoreB           Int         @default(0)
+  prevScoreA       Int         @default(0)
+  prevScoreB       Int         @default(0)
+  status           String      @default("waiting")
+  isNext           Boolean     @default(false)
+  scheduledTime    String      @default("")
+  calledAt         DateTime?
+  quickCall        Boolean     @default(false)
+  createdAt        DateTime    @default(now())
 }

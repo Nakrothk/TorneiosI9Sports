@@ -1,5 +1,6 @@
 const express = require('express')
 const prisma  = require('../lib/prisma')
+const { loserOf, slotChange } = require('../lib/bracket')
 
 const router  = express.Router()
 const include = { teamA: true, teamB: true, court: true, winnerTeam: true }
@@ -147,13 +148,8 @@ router.post('/:id/finish', async (req, res, next) => {
     })
 
     // ── Bracket progression ─────────────────────────────────────
-    if (winnerTeamId && current.nextMatchId) {
-      const next = await prisma.match.findUnique({ where: { id: current.nextMatchId } })
-      if (next && next.status !== 'finished') {
-        if      (!next.teamAId) await prisma.match.update({ where: { id: next.id }, data: { teamAId: winnerTeamId } })
-        else if (!next.teamBId) await prisma.match.update({ where: { id: next.id }, data: { teamBId: winnerTeamId } })
-      }
-    }
+    await advanceTo(current.nextMatchId, null, winnerTeamId)
+    await advanceTo(current.loserNextMatchId, null, loserOf(current, winnerTeamId))
 
     res.json(updated)
   } catch (err) { next(err) }
@@ -271,20 +267,13 @@ router.post('/:id/edit', async (req, res, next) => {
     })
 
     // ── Bracket progression ─────────────────────────────────────
-    if (current.nextMatchId) {
-      const oldWinner = current.winnerTeamId
-      const next = await prisma.match.findUnique({ where: { id: current.nextMatchId } })
-      if (next && next.status !== 'finished') {
-        if (oldWinner && oldWinner !== winnerTeamId) {
-          // Vencedor mudou: atualiza o slot que tinha o vencedor antigo
-          if      (next.teamAId === oldWinner) await prisma.match.update({ where: { id: next.id }, data: { teamAId: winnerTeamId || null } })
-          else if (next.teamBId === oldWinner) await prisma.match.update({ where: { id: next.id }, data: { teamBId: winnerTeamId || null } })
-        } else if (!oldWinner && winnerTeamId) {
-          // Vencedor determinado pela primeira vez via edit
-          if      (!next.teamAId) await prisma.match.update({ where: { id: next.id }, data: { teamAId: winnerTeamId } })
-          else if (!next.teamBId) await prisma.match.update({ where: { id: next.id }, data: { teamBId: winnerTeamId } })
-        }
-      }
+    // Só propaga se nenhuma partida seguinte foi jogada: com uma semi corrigida depois do
+    // 3º lugar jogado, mexer só na final tiraria uma dupla da chave.
+    const downstreamIds = [current.nextMatchId, current.loserNextMatchId].filter(Boolean)
+    const downstream = await prisma.match.findMany({ where: { id: { in: downstreamIds } } })
+    if (!downstream.some(m => m.status === 'finished')) {
+      await advanceTo(current.nextMatchId, current.winnerTeamId, winnerTeamId)
+      await advanceTo(current.loserNextMatchId, loserOf(current, current.winnerTeamId), loserOf(current, winnerTeamId))
     }
 
     res.json(updated)
@@ -337,5 +326,14 @@ router.delete('/:id', async (req, res, next) => {
     res.json({ ok: true })
   } catch (err) { next(err) }
 })
+
+// ── helpers ─────────────────────────────────────────────────────
+// Leva uma dupla para a partida seguinte da chave (vencedor → nextMatch, perdedor → loserNextMatch).
+async function advanceTo(matchId, previous, team) {
+  if (!matchId) return
+  const next = await prisma.match.findUnique({ where: { id: matchId } })
+  const data = slotChange(next, previous, team)
+  if (data) await prisma.match.update({ where: { id: next.id }, data })
+}
 
 module.exports = router
