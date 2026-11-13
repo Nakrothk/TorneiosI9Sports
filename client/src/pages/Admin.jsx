@@ -229,24 +229,12 @@ function printEvent(ev) {
   })() : ''
 
   // ── Previsão Final ────────────────────────────────────────────
-  const buildStandings = (matchList) => {
-    const tm = {}
-    for (const m of matchList) {
-      if (m.status !== 'finished') continue
-      if (m.teamA && !tm[m.teamAId]) tm[m.teamAId] = { team: m.teamA, wins: 0 }
-      if (m.teamB && !tm[m.teamBId]) tm[m.teamBId] = { team: m.teamB, wins: 0 }
-      if (m.winnerTeamId === m.teamAId && tm[m.teamAId]) tm[m.teamAId].wins++
-      if (m.winnerTeamId === m.teamBId && tm[m.teamBId]) tm[m.teamBId].wins++
-    }
-    return Object.values(tm).sort((a, b) => b.wins - a.wins)
-  }
-
   let previewHTML = ''
 
   if (ev.groups.length >= 2) {
     const previewData = ev.groups.map(t => {
-      const standings = buildStandings(t.matches)
-      return { group: t.group, leader: standings[0] || null, wins: standings[0]?.wins ?? 0 }
+      const standings = rankFromMatches(t.matches)
+      return { group: t.group, leader: standings[0] || null, wins: standings[0]?.V ?? 0 }
     })
     const previewPairs = []
     for (let i = 0; i < previewData.length; i += 2) previewPairs.push([previewData[i], previewData[i + 1] || null])
@@ -284,7 +272,7 @@ function printEvent(ev) {
       ...ev.groups.flatMap(t => t.matches),
       ...(ev.standalone ? ev.standalone.matches : []),
     ]
-    const standings = buildStandings(allMatches)
+    const standings = rankFromMatches(allMatches)
     if (standings.length >= 2) {
       const [top1, top2] = standings
       const tname = p => esc(`${p.team.player1} / ${p.team.player2}`)
@@ -297,7 +285,7 @@ function printEvent(ev) {
               <table>${standings.slice(0, 6).map((p, i) => `<tr>
                 <td style="font-weight:700;color:#6d28d9;width:24px">${i + 1}°</td>
                 <td>${tname(p)}</td>
-                <td style="color:#16a34a;font-weight:700;white-space:nowrap">${p.wins}V</td>
+                <td style="color:#16a34a;font-weight:700;white-space:nowrap">${p.V}V</td>
               </tr>`).join('')}</table>
             </div>
             <div class="box" style="border-color:#7c3aed">
@@ -480,7 +468,28 @@ function calcStandings(entries, matches) {
   }
   return [...s.values()]
     .map(x => ({ ...x, S: x.GP - x.GC }))
-    .sort((a, b) => b.P - a.P || b.S - a.S || b.GP - a.GP || b.V - a.V)
+    .sort(byStandingCriteria)
+}
+
+// Critério de classificação (o mesmo do servidor): vitórias → saldo de games → games pró.
+function byStandingCriteria(a, b) {
+  return b.V - a.V || b.S - a.S || b.GP - a.GP
+}
+
+// Classificação só das duplas que já têm partida finalizada (Previsão Final).
+function rankFromMatches(matchList) {
+  const tm = {}
+  for (const m of matchList) {
+    if (m.status !== 'finished') continue
+    for (const [id, team, gp, gc] of [[m.teamAId, m.teamA, m.scoreA, m.scoreB], [m.teamBId, m.teamB, m.scoreB, m.scoreA]]) {
+      if (!team) continue
+      const row = tm[id] ||= { team, V: 0, S: 0, GP: 0 }
+      row.GP += gp
+      row.S += gp - gc
+      if (m.winnerTeamId === id) row.V++
+    }
+  }
+  return Object.values(tm).sort(byStandingCriteria)
 }
 
 function byeTeams(entries, roundMatches) {
@@ -1522,15 +1531,7 @@ function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBr
   const [showPreview, setShowPreview] = useState(false)
 
   const groupLeaders = ev.groups.map(t => {
-    const teamsMap = {}
-    for (const m of t.matches) {
-      if (m.status !== 'finished') continue
-      if (m.teamA && !teamsMap[m.teamAId]) teamsMap[m.teamAId] = { team: m.teamA, wins: 0 }
-      if (m.teamB && !teamsMap[m.teamBId]) teamsMap[m.teamBId] = { team: m.teamB, wins: 0 }
-      if (m.winnerTeamId === m.teamAId && teamsMap[m.teamAId]) teamsMap[m.teamAId].wins++
-      if (m.winnerTeamId === m.teamBId && teamsMap[m.teamBId]) teamsMap[m.teamBId].wins++
-    }
-    const sorted = Object.values(teamsMap).sort((a, b) => b.wins - a.wins)
+    const sorted = rankFromMatches(t.matches)
     return { group: t.group, leader: sorted[0] || null }
   })
 
@@ -1538,18 +1539,7 @@ function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBr
   for (let i = 0; i < groupLeaders.length - 1; i += 2) matchups.push([groupLeaders[i], groupLeaders[i + 1]])
   const tname = l => l ? `${l.team.player1} / ${l.team.player2}` : null
 
-  const allStandings = (() => {
-    const allM = [...ev.groups.flatMap(t => t.matches), ...(ev.standalone ? ev.standalone.matches : [])]
-    const tm = {}
-    for (const m of allM) {
-      if (m.status !== 'finished') continue
-      if (m.teamA && !tm[m.teamAId]) tm[m.teamAId] = { team: m.teamA, wins: 0 }
-      if (m.teamB && !tm[m.teamBId]) tm[m.teamBId] = { team: m.teamB, wins: 0 }
-      if (m.winnerTeamId === m.teamAId && tm[m.teamAId]) tm[m.teamAId].wins++
-      if (m.winnerTeamId === m.teamBId && tm[m.teamBId]) tm[m.teamBId].wins++
-    }
-    return Object.values(tm).sort((a, b) => b.wins - a.wins)
-  })()
+  const allStandings = rankFromMatches([...ev.groups.flatMap(t => t.matches), ...(ev.standalone ? ev.standalone.matches : [])])
   const canPreview = ev.groups.length >= 2 || ev.groups.length === 1 || !!ev.standalone
 
   return (
@@ -1638,7 +1628,7 @@ function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBr
                     <div key={g.group} className="flex items-center gap-2">
                       <span className="text-xs font-bold text-purple-500 w-16 shrink-0">Grupo {g.group}</span>
                       {g.leader
-                        ? <span className="text-xs font-semibold text-gray-800 truncate">{tname(g.leader)} <span className="text-gray-400">({g.leader.wins}V)</span></span>
+                        ? <span className="text-xs font-semibold text-gray-800 truncate">{tname(g.leader)} <span className="text-gray-400">({g.leader.V}V)</span></span>
                         : <span className="text-xs text-gray-400 italic">sem jogos ainda</span>}
                     </div>
                   ))}
@@ -1669,7 +1659,7 @@ function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBr
                   {allStandings.slice(0, 4).map((p, i) => (
                     <div key={p.team.id} className="flex items-center gap-2">
                       <span className="text-xs font-bold text-purple-500 w-5 shrink-0">{i + 1}°</span>
-                      <span className="text-xs font-semibold text-gray-800 truncate">{p.team.player1} / {p.team.player2} <span className="text-gray-400">({p.wins}V)</span></span>
+                      <span className="text-xs font-semibold text-gray-800 truncate">{p.team.player1} / {p.team.player2} <span className="text-gray-400">({p.V}V)</span></span>
                     </div>
                   ))}
                 </div>
@@ -1706,16 +1696,7 @@ function EventCard({ ev, inPlay, done, total, canGenerate, onClick, onGenerateBr
 function PreviewBracket({ ev }) {
   // Standings view for 1-group or standalone tournaments
   if (ev.groups.length < 2) {
-    const allM = [...ev.groups.flatMap(t => t.matches), ...(ev.standalone ? ev.standalone.matches : [])]
-    const tm = {}
-    for (const m of allM) {
-      if (m.status !== 'finished') continue
-      if (m.teamA && !tm[m.teamAId]) tm[m.teamAId] = { team: m.teamA, wins: 0 }
-      if (m.teamB && !tm[m.teamBId]) tm[m.teamBId] = { team: m.teamB, wins: 0 }
-      if (m.winnerTeamId === m.teamAId && tm[m.teamAId]) tm[m.teamAId].wins++
-      if (m.winnerTeamId === m.teamBId && tm[m.teamBId]) tm[m.teamBId].wins++
-    }
-    const standings = Object.values(tm).sort((a, b) => b.wins - a.wins)
+    const standings = rankFromMatches([...ev.groups.flatMap(t => t.matches), ...(ev.standalone ? ev.standalone.matches : [])])
     if (standings.length < 2) {
       return <div className="flex items-center justify-center h-full text-sm text-gray-400 italic">Aguardando mais jogos...</div>
     }
@@ -1731,7 +1712,7 @@ function PreviewBracket({ ev }) {
                 <div className={`px-3 py-1 text-xs font-black ${i < 2 ? 'bg-purple-100 text-purple-700' : 'bg-gray-50 text-gray-400'}`}>{i + 1}° lugar</div>
                 <div className="px-3 py-2 bg-white flex items-center gap-2">
                   <span className="text-xs font-bold text-gray-800 flex-1">{p.team.player1} / {p.team.player2}</span>
-                  <span className="text-xs text-green-600 font-bold shrink-0">{p.wins}V</span>
+                  <span className="text-xs text-green-600 font-bold shrink-0">{p.V}V</span>
                 </div>
               </div>
             ))}
@@ -1757,23 +1738,9 @@ function PreviewBracket({ ev }) {
   }
 
   const groupLeaders = ev.groups.map(t => {
-    const teamsMap = {}
-    for (const m of t.matches) {
-      if (m.status !== 'finished') continue
-      if (m.teamA && !teamsMap[m.teamAId]) teamsMap[m.teamAId] = { team: m.teamA, wins: 0, losses: 0 }
-      if (m.teamB && !teamsMap[m.teamBId]) teamsMap[m.teamBId] = { team: m.teamB, wins: 0, losses: 0 }
-      if (m.winnerTeamId === m.teamAId) {
-        if (teamsMap[m.teamAId]) teamsMap[m.teamAId].wins++
-        if (m.teamBId && teamsMap[m.teamBId]) teamsMap[m.teamBId].losses++
-      }
-      if (m.winnerTeamId === m.teamBId) {
-        if (teamsMap[m.teamBId]) teamsMap[m.teamBId].wins++
-        if (m.teamAId && teamsMap[m.teamAId]) teamsMap[m.teamAId].losses++
-      }
-    }
-    const ranking = Object.values(teamsMap).sort((a, b) => b.wins - a.wins || a.losses - b.losses)
+    const ranking = rankFromMatches(t.matches)
     const allDone = t.matches.length > 0 && t.matches.every(m => m.status === 'finished')
-    return { group: t.group, leader: ranking[0]?.team || null, wins: ranking[0]?.wins ?? 0, allDone }
+    return { group: t.group, leader: ranking[0]?.team || null, wins: ranking[0]?.V ?? 0, allDone }
   })
 
   const pairs = []

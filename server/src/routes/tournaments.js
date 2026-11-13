@@ -1,6 +1,7 @@
 const express = require('express')
 const { Prisma } = require('@prisma/client')
 const prisma  = require('../lib/prisma')
+const { calcStandings, rankClassified } = require('../lib/standings')
 
 const router = express.Router()
 
@@ -185,12 +186,11 @@ router.post('/generate-bracket', async (req, res, next) => {
       ])
 
     } else if (numGroups === 3) {
-      // 6 classified → top 2 by saldo get a bye straight to semi; bottom 4 play quarters
-      const all6 = Object.entries(byGroup).flatMap(([g, standings]) =>
+      // 6 classified → top 2 (vitórias, depois saldo) get a bye straight to semi; bottom 4 play quarters
+      const all6 = rankClassified(Object.entries(byGroup).flatMap(([g, standings]) =>
         standings.slice(0, 2).map(s => ({ ...s, groupName: g }))
-      )
-      all6.sort((a, b) => b.S - a.S || b.P - a.P || b.GP - a.GP || b.V - a.V)
-      // [0],[1] = byes (best saldo); [2],[3],[4],[5] = quarterfinals
+      ))
+      // [0],[1] = byes; [2],[3],[4],[5] = quarterfinals
       await buildThreeGroupBracket(bt.id, category, all6)
 
     } else if (numGroups === 4) {
@@ -209,8 +209,7 @@ router.post('/generate-bracket', async (req, res, next) => {
 
     } else {
       // Fallback for other group counts: take top 2 from each, rank all, use top 8
-      const allClassified = Object.values(byGroup).flatMap(s => s.slice(0, 2))
-      allClassified.sort((a, b) => b.P - a.P || b.S - a.S || b.GP - a.GP || b.V - a.V)
+      const allClassified = rankClassified(Object.values(byGroup).flatMap(s => s.slice(0, 2)))
       const top8 = allClassified.slice(0, 8)
       if (top8.length <= 4) {
         await buildSemiFinal(bt.id, category, [
@@ -666,33 +665,45 @@ async function getTournament(id) {
 }
 
 /**
- * Creates: semi1 → final, semi2 → final
+ * Disputa de 3º lugar: recebe os perdedores das semis (via loserNextMatchId).
+ */
+function createThirdPlace(tournamentId, category, position) {
+  return prisma.match.create({
+    data: { tournamentId, category, round: 'terceiro lugar', position, status: 'waiting' },
+  })
+}
+
+/**
+ * Creates: semi1 → final, semi2 → final; perdedores das semis → 3º lugar
  * Returns winner progression via nextMatchId.
  */
 async function buildSemiFinal(tournamentId, category, semis) {
   const finalMatch = await prisma.match.create({
     data: { tournamentId, category, round: 'final', position: 3, status: 'waiting' },
   })
+  const thirdPlace = await createThirdPlace(tournamentId, category, 4)
   await prisma.match.create({
-    data: { teamAId: semis[0].a, teamBId: semis[0].b, tournamentId, category, round: 'semi', position: 1, status: 'waiting', nextMatchId: finalMatch.id },
+    data: { teamAId: semis[0].a, teamBId: semis[0].b, tournamentId, category, round: 'semi', position: 1, status: 'waiting', nextMatchId: finalMatch.id, loserNextMatchId: thirdPlace.id },
   })
   await prisma.match.create({
-    data: { teamAId: semis[1].a, teamBId: semis[1].b, tournamentId, category, round: 'semi', position: 2, status: 'waiting', nextMatchId: finalMatch.id },
+    data: { teamAId: semis[1].a, teamBId: semis[1].b, tournamentId, category, round: 'semi', position: 2, status: 'waiting', nextMatchId: finalMatch.id, loserNextMatchId: thirdPlace.id },
   })
 }
 
 /**
- * Creates: qA → semi1, qB → semi1, qC → semi2, qD → semi2, semi1 → final, semi2 → final
+ * Creates: qA → semi1, qB → semi1, qC → semi2, qD → semi2, semi1 → final, semi2 → final;
+ * perdedores das semis → 3º lugar
  */
 async function buildQuarterFinal(tournamentId, category, quarters) {
   const finalMatch = await prisma.match.create({
     data: { tournamentId, category, round: 'final', position: 7, status: 'waiting' },
   })
+  const thirdPlace = await createThirdPlace(tournamentId, category, 8)
   const semi1 = await prisma.match.create({
-    data: { tournamentId, category, round: 'semi', position: 5, status: 'waiting', nextMatchId: finalMatch.id },
+    data: { tournamentId, category, round: 'semi', position: 5, status: 'waiting', nextMatchId: finalMatch.id, loserNextMatchId: thirdPlace.id },
   })
   const semi2 = await prisma.match.create({
-    data: { tournamentId, category, round: 'semi', position: 6, status: 'waiting', nextMatchId: finalMatch.id },
+    data: { tournamentId, category, round: 'semi', position: 6, status: 'waiting', nextMatchId: finalMatch.id, loserNextMatchId: thirdPlace.id },
   })
   await prisma.match.create({
     data: { teamAId: quarters[0].a, teamBId: quarters[0].b, tournamentId, category, round: 'quartas', position: 1, status: 'waiting', nextMatchId: semi1.id },
@@ -709,10 +720,11 @@ async function buildQuarterFinal(tournamentId, category, quarters) {
 }
 
 /**
- * 3-group bracket: top 2 (by saldo) get a bye into the semis.
+ * 3-group bracket: top 2 (vitórias, depois saldo) get a bye into the semis.
  * The other 4 play quarterfinals; winners advance to face the bye teams.
+ * Losers of the semis play for 3rd place.
  * Constraint: no team plays someone from their own group in the quarters.
- * Preference: stronger seed faces weakest valid opponent (best saldo vs worst saldo).
+ * Preference: stronger seed faces weakest valid opponent.
  */
 async function buildThreeGroupBracket(tournamentId, category, ranked6) {
   const [bye0, bye1, a, b, c, d] = ranked6
@@ -736,11 +748,12 @@ async function buildThreeGroupBracket(tournamentId, category, ranked6) {
   const finalMatch = await prisma.match.create({
     data: { tournamentId, category, round: 'final', position: 5, status: 'waiting' },
   })
+  const thirdPlace = await createThirdPlace(tournamentId, category, 6)
   const semi1 = await prisma.match.create({
-    data: { teamAId: bye0.teamId, tournamentId, category, round: 'semi', position: 3, status: 'waiting', nextMatchId: finalMatch.id },
+    data: { teamAId: bye0.teamId, tournamentId, category, round: 'semi', position: 3, status: 'waiting', nextMatchId: finalMatch.id, loserNextMatchId: thirdPlace.id },
   })
   const semi2 = await prisma.match.create({
-    data: { teamAId: bye1.teamId, tournamentId, category, round: 'semi', position: 4, status: 'waiting', nextMatchId: finalMatch.id },
+    data: { teamAId: bye1.teamId, tournamentId, category, round: 'semi', position: 4, status: 'waiting', nextMatchId: finalMatch.id, loserNextMatchId: thirdPlace.id },
   })
   await prisma.match.create({
     data: { teamAId: qf1a.teamId, teamBId: qf1b.teamId, tournamentId, category, round: 'quartas', position: 1, status: 'waiting', nextMatchId: semi1.id },
@@ -748,30 +761,6 @@ async function buildThreeGroupBracket(tournamentId, category, ranked6) {
   await prisma.match.create({
     data: { teamAId: qf2a.teamId, teamBId: qf2b.teamId, tournamentId, category, round: 'quartas', position: 2, status: 'waiting', nextMatchId: semi2.id },
   })
-}
-
-/**
- * Round-robin standings: sorted by P → saldo → GP → V
- */
-function calcStandings(entries, matches) {
-  const s = new Map()
-  for (const e of entries) {
-    s.set(e.teamId, { teamId: e.teamId, team: e.team, J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, P: 0 })
-  }
-  for (const m of matches) {
-    if (m.status !== 'finished') continue
-    const a = s.get(m.teamAId), b = s.get(m.teamBId)
-    if (!a || !b) continue
-    a.J++; b.J++
-    a.GP += m.scoreA; a.GC += m.scoreB
-    b.GP += m.scoreB; b.GC += m.scoreA
-    if (m.scoreA > m.scoreB)      { a.V++; a.P += 3; b.D++ }
-    else if (m.scoreA < m.scoreB) { b.V++; b.P += 3; a.D++ }
-    else                          { a.E++; a.P++;     b.E++; b.P++ }
-  }
-  return [...s.values()]
-    .map(x => ({ ...x, S: x.GP - x.GC }))
-    .sort((a, b) => b.P - a.P || b.S - a.S || b.GP - a.GP || b.V - a.V)
 }
 
 /**
